@@ -1,7 +1,7 @@
 # Jak napisać narzędzie
 
 Narzędzie to metoda `@Tool` wołana przez model przez gateway. Każdy argument jest niezaufany, a wynik trafia
-do modelu, który może go potraktować jak instrukcję. Wzorcem jest `get_record`.
+do modelu, który może go potraktować jak instrukcję. Wzorcami są `get_page` (odczyt) i `create_page` (zapis).
 
 ## Kroki, od środka
 
@@ -15,7 +15,8 @@ do modelu, który może go potraktować jak instrukcję. Wzorcem jest `get_recor
    `@JsonIgnoreProperties(ignoreUnknown = true)`, potem do domeny.
 4. `mcp-tools`: cienka metoda `@Tool` z `@ToolRisk`, walidacją argumentów i wywołaniem przypadku użycia;
    mapowanie wyjątku domeny na kod C10 w `ConfluenceToolErrors`.
-5. `mcp-app`: dopisanie beana narzędzia w `McpToolsConfiguration` (jawna lista; sam `@Tool` nie wystarczy),
+5. `mcp-app`: dopisanie beana narzędzia w `McpToolsConfiguration` przez `ConstrainedToolCallbacks.of(...)`
+   (jawna lista; sam `@Tool` nie wystarczy; limity argumentów z `@StringArgument` trafiają do `inputSchema`),
    test w `mcp-app/src/test` przez `ServerTestSupport`, odpowiedź systemu w `StubBackend`.
 6. `docs/api/tools-catalog.md` i tabela narzędzi w README.
 
@@ -50,5 +51,5 @@ do modelu, który może go potraktować jak instrukcję. Wzorcem jest `get_recor
 ## Do dopisania po starterze beta
 
 `@ResourceRef` na każdym argumencie z identyfikatorem zasobu i resolver atrybutów (projekt, klasyfikacja),
-`QueryScope` w wyszukiwaniu, `ResultFilter` na wynikach listujących, manifest C6. Wzorce: `search_records`,
-`update_record`, `purge_records` (M2 template'u).
+`QueryScope` w wyszukiwaniu, `ResultFilter` na wynikach listujących, manifest C6. Wzorce przyjdą z M2 template'u
+(`search_records`, `update_record`, `purge_records`).

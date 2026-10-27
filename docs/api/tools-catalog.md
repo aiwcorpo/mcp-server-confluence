@@ -4,9 +4,42 @@ Narzędzia to powierzchnia publiczna serwera. Każda zmiana nazwy, opisu, schema
 `definitionHash` (C6) i wymaga ponownego zatwierdzenia w gateway'u, więc przechodzi przez code review razem z
 tą tabelą.
 
-| Narzędzie (klient widzi `confluence__<nazwa>`) | Ryzyko | Akcja (C6) | Argumenty | Uprawnienie (C9) | Poświadczenie |
-| --- | --- | --- | --- | --- | --- |
-| `get_record` | `READ_ONLY` | `read` | `recordId` (`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`) | `mcp-confluence-read` | z C3, `Authorization` |
+| Narzędzie (klient widzi `confluence__<nazwa>`) | Ryzyko | Akcja (C6) | Argumenty | Zasób (C7, `resourceRefs` od M2) | Uprawnienie (C9) | Poświadczenie |
+| --- | --- | --- | --- | --- | --- | --- |
+| `search_pages` | `READ_ONLY` | `read` | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200, jedna linia, co najmniej jedna litera lub cyfra) | `space` -> `Confluence::Space` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
+| `get_page` | `READ_ONLY` | `read` | `pageId` (`^[1-9][0-9]{0,18}$`) | `pageId` -> `Confluence::Page` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
+| `create_page` | `UPDATE` | `update` | `space`, `parentId` (`^[1-9][0-9]{0,18}$`), `title` (1-255, jedna linia, nie same odstępy), `body` (1-20000, bez znaków sterujących poza tab, LF, CR) | `space` -> `Confluence::Space`, `parentId` -> `Confluence::Page` | `mcp-confluence-write` | `user-secret` (PAT), C3 `Bearer` |
+
+Wszystkie argumenty są wymagane, `inputSchema` ma `additionalProperties: false` i limity
+`minLength`/`maxLength`/`pattern` (z `@StringArgument`). Wzorce identyfikatorów to `ConfluenceSpaceKey` i
+`ConfluencePageId` z `mcp-contracts` 2.0.2 (`ConfluenceIds`).
+
+## Wywołania Confluence Data Center
+
+| Narzędzie | Żądania |
+| --- | --- |
+| `search_pages` | `GET /rest/api/content/search?cql=space = "<space>" AND type = page AND text ~ "<słowa>"&limit=25&expand=space,version` |
+| `get_page` | `GET /rest/api/content/{pageId}?expand=body.storage,space,version,ancestors` |
+| `create_page` | `GET /rest/api/content/{parentId}?expand=space,version`, potem `POST /rest/api/content` z `{type: page, title, space: {key}, ancestors: [{id: parentId}], body: {storage: {value, representation: storage}}}` |
+
+## Mapowanie odpowiedzi
+
+| Confluence | Wynik |
+| --- | --- |
+| 401 | `credential_required` (z `connectUrl` portalu) |
+| 403, 404 | `not_found_or_denied`, ten sam tekst; w wyszukiwaniu pusta lista |
+| 400 przy `POST` | `invalid_argument`, tekst serwera (np. duplikat tytułu) |
+| 5xx, błąd odczytu | `internal_error`, bez treści odpowiedzi |
+| treść inna niż `type: page` / `status: current` | `not_found_or_denied`, w wyszukiwaniu pominięta |
+| strona w przestrzeni osobistej (`~user`) | `not_found_or_denied` |
+| rodzic z innej przestrzeni niż `space` | `not_found_or_denied`, bez `POST` |
+
+## Treść jako dane
+
+`get_page` zwraca treść strony w `body` z `kind: "untrusted-data"` i `format: "text/plain"`: to tekst
+użytkowników Confluence, nie polecenia. Makra spoza listy (`code`, `noformat`, `info`, `note`, `warning`, `tip`,
+`panel`, `expand`, `excerpt`) nie są rozwijane, a ich nazwy są w `body.omittedMacros`. Tytuły w wynikach to też
+tekst z Confluence.
 
 Konwencje: nazwy `snake_case`, czasownik i obiekt, bez prefiksu systemu (dokłada go gateway); opis mówi, co
 narzędzie zwraca, bez instrukcji dla modelu.

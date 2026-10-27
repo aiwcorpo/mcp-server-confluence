@@ -3,7 +3,7 @@
 ## Miejsce w platformie
 
 ```
-klient AI --OIDC--> MCP gateway --mTLS + JWT C2 + poświadczenie C3--> mcp-confluence --API--> system confluence
+klient AI --OIDC--> MCP gateway --mTLS + JWT C2 + poświadczenie C3--> mcp-confluence --REST /rest/api/content--> Confluence DC
                        |  ^
                        |  +-- credential broker (poświadczenie użytkownika)
                        +-- polityki (Cedar), potwierdzenia, audyt
@@ -44,4 +44,9 @@ tryb ASYNC.
 - Jeden system na serwer: `server-id` = `mcp-<system>`, `CredentialContext.require` innego systemu to błąd
   programisty.
 - Adapter nie podąża za przekierowaniami i nie czyta treści błędów systemu.
+- Treść strony tylko z `body.storage`, przetwarzana w serwerze (`StorageFormat`, jsoup w trybie XML) do zwykłego
+  tekstu z listą dozwolonych makr. Widoki renderowane przez Confluence (`body.view`, `export_view`) zawierają
+  rozwinięte include/excerpt-include z innych przestrzeni, których polityka nie oceniała.
+- Zakres wyszukiwania w jednym miejscu: `ConfluenceService.searchPages` (tam wejdą `QueryScope` i `ResultFilter`
+  startera beta); CQL tylko w `Cql`.
 - Ponawianie i circuit breaker w adapterze: M2 template'u (teraz tylko timeouty).

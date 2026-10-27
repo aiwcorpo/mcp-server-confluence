@@ -167,7 +167,7 @@ final class StorageFormat {
     }
 
     private static String collapse(String text) {
-        return text.replace(' ', ' ').replaceAll("\\s+", " ");
+        return text.replace('\u00a0', ' ').replaceAll("\\s+", " ");
     }
 
     private static String tidy(String text) {

@@ -22,28 +22,39 @@ public class ConfluenceService implements ConfluenceUseCase {
     }
 
     /**
-     * The single place where search is scoped. In M1 the scope is the space argument: the adapter builds the
-     * CQL for that space only, and hits from any other space are dropped here as well. The starter beta's
-     * QueryScope (narrowing by the virtual server's spaces) and ResultFilter (per-hit policy check) plug in
-     * at this method.
+     * Search is scoped twice: the adapter builds the CQL for the named space only, and every hit must belong to
+     * that space and pass {@link #spaceInScope}. The starter beta's QueryScope (narrowing by the virtual
+     * server's spaces) plugs in before the port call, its ResultFilter into {@link #spaceInScope}.
      */
     @Override
     public List<PageSummary> searchPages(String spaceKey, String text) {
         return resource.searchPages(spaceKey, text, SEARCH_LIMIT).stream()
-                .filter(hit -> spaceKey.equals(hit.spaceKey()))
+                .filter(hit -> spaceKey.equals(hit.spaceKey()) && spaceInScope(hit.spaceKey()))
                 .limit(SEARCH_LIMIT)
                 .toList();
     }
 
     /**
-     * Pages of personal spaces are reported as not found: such a space cannot be granted or narrowed in the
-     * policy (ConfluenceSpaceKey of the contracts), so the server never hands one out.
+     * {@code get_page} names only the page, so the space is known after the fetch; the page passes the same
+     * {@link #spaceInScope} check as search hits. Out of scope, missing and forbidden are one
+     * {@link PageNotFoundException}, so the client cannot tell them apart.
      */
     @Override
     public Page getPage(String pageId) {
         return resource.findPage(pageId)
-                .filter(page -> ConfluenceIds.isSpaceKey(page.spaceKey()))
+                .filter(page -> spaceInScope(page.spaceKey()))
                 .orElseThrow(PageNotFoundException::new);
+    }
+
+    /**
+     * The one place where a resolved page's space is checked against the caller's scope. In M1 Confluence
+     * enforces the user's own permissions (the call runs with the user's PAT) and this check only refuses
+     * personal spaces, which the policy cannot grant or narrow (ConfluenceSpaceKey of the contracts).
+     * With the starter beta, the policy decision on {@code Confluence::Page} / {@code Confluence::Space}
+     * (@ResourceRef, vsScopes of the virtual server, Cedar on the server) replaces this method.
+     */
+    private static boolean spaceInScope(String spaceKey) {
+        return ConfluenceIds.isSpaceKey(spaceKey);
     }
 
     /**
@@ -54,7 +65,7 @@ public class ConfluenceService implements ConfluenceUseCase {
     @Override
     public PageSummary createPage(String spaceKey, String parentId, String title, String body) {
         resource.findPageSummary(parentId)
-                .filter(parent -> spaceKey.equals(parent.spaceKey()))
+                .filter(parent -> spaceKey.equals(parent.spaceKey()) && spaceInScope(parent.spaceKey()))
                 .orElseThrow(PageNotFoundException::new);
         return resource.createPage(new NewPage(spaceKey, parentId, title, body));
     }
