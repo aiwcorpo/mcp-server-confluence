@@ -42,6 +42,9 @@ abstract class ServerTestSupport {
     static void environment(DynamicPropertyRegistry registry) {
         GATEWAY.serverProperties().forEach((name, value) -> registry.add(name, () -> value));
         registry.add("confluence.backend.base-url", BACKEND::baseUrl);
+        // Short limits so the timeout and size tests run quickly; StubBackend's slow and huge pages exceed them.
+        registry.add("confluence.backend.read-timeout", () -> "1s");
+        registry.add("confluence.backend.max-response-size", () -> "64KB");
     }
 
     @LocalServerPort
@@ -80,19 +83,12 @@ abstract class ServerTestSupport {
     }
 
     /**
-     * The argument was refused before Confluence. Values outside the published inputSchema are refused by the
-     * MCP SDK's own schema check, which answers with its text instead of a C10 object (known limitation of
-     * starter 3.0.0-alpha, see STATUS.md); values the schema allows but the tool does not get C10
-     * {@code invalid_argument} with the server's message.
+     * The argument was refused before Confluence, as C10 {@code invalid_argument}: by the starter's check against
+     * the published inputSchema, or, for what the schema allows, by the tool.
      */
-    static void assertRejectedArgument(McpSchema.CallToolResult result, String argument, String serverMessage) {
+    static void assertRejectedArgument(McpSchema.CallToolResult result) {
         assertThat(result.isError()).isTrue();
-        String text = text(result);
-        if (text.contains("input validation failed")) {
-            assertThat(text).contains("/" + argument + ":");
-        } else {
-            assertThat(text).contains("\"error\":\"invalid_argument\"", serverMessage);
-        }
+        assertThat(text(result)).contains("\"error\":\"invalid_argument\"").doesNotContain("input validation failed");
     }
 
     private static Set<String> contractSystems() {

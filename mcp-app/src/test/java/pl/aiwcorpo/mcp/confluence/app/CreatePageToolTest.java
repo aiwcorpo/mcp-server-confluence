@@ -31,7 +31,7 @@ class CreatePageToolTest extends ServerTestSupport {
                             Next: & more"""));
 
             assertThat(result.isError()).isFalse();
-            assertThat(text(result)).contains("\"id\":\"5001\"", "\"spaceKey\":\"ENG\"", "\"title\":\"Retro 2.1\"",
+            assertThat(text(result)).contains("\"id\":\"5001\"", "\"spaceKey\":\"ENG\"", "\"title\":{\"kind\":\"untrusted-data\",\"format\":\"text/plain\",\"text\":\"Retro 2.1\",\"truncated\":false}",
                     "\"version\":1").doesNotContain("Went well", "_links");
         }
         assertThat(BACKEND.requests()).hasSize(2).allSatisfy(request -> assertThat(request.authorization()).isEqualTo(PAT));
@@ -104,30 +104,20 @@ class CreatePageToolTest extends ServerTestSupport {
     @Test
     void invalidArgumentsAreRejectedBeforeConfluence() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
-            assertInvalid(client, Map.of("space", "~jkowalski", "parentId", "1000", "title", "T", "body", "x"),
-                    "space", "space must be a space key");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000/../2000", "title", "T", "body", "x"),
-                    "parentId", "parentId must be a page id");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "0", "title", "T", "body", "x"),
-                    "parentId", "parentId must be a page id");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "two\nlines", "body", "x"),
-                    "title", "title must be");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "  ", "body", "x"),
-                    "title", "title must be");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T".repeat(256), "body", "x"),
-                    "title", "title must be");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T", "body", "x".repeat(20_001)),
-                    "body", "body must be");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T", "body", "bell\u0007"),
-                    "body", "body must be");
-            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T", "body", ""),
-                    "body", "body must be");
+            assertInvalid(client, Map.of("space", "~jkowalski", "parentId", "1000", "title", "T", "body", "x"));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000/../2000", "title", "T", "body", "x"));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "0", "title", "T", "body", "x"));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "two\nlines", "body", "x"));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "  ", "body", "x"));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T".repeat(256), "body", "x"));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T", "body", "x".repeat(20_001)));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T", "body", "bell\u0007"));
+            assertInvalid(client, Map.of("space", "ENG", "parentId", "1000", "title", "T", "body", ""));
             assertThat(BACKEND.authorizations()).isEmpty();
         }
     }
 
-    private static void assertInvalid(McpSyncClient client, Map<String, Object> arguments, String argument,
-            String message) {
-        assertRejectedArgument(call(client, "create_page", arguments), argument, message);
+    private static void assertInvalid(McpSyncClient client, Map<String, Object> arguments) {
+        assertRejectedArgument(call(client, "create_page", arguments));
     }
 }

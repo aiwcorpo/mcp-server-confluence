@@ -41,6 +41,8 @@ final class StubBackend {
 
     static final String EXPIRED_CREDENTIAL = "Bearer expired-pat-of-jkowalski";
     static final String HR_SECRET = "Salary of jkowalski: 12345 PLN";
+    /** Text that must never leave the adapter: it sits in a body the adapter cannot use. */
+    static final String BODY_MARKER = "backend-body-marker-5c1d";
 
     record Request(String method, String path, Map<String, String> query, String authorization, String body) {
     }
@@ -49,6 +51,8 @@ final class StubBackend {
 
     private final HttpServer server;
     private final List<Request> requests = new CopyOnWriteArrayList<>();
+    private final List<String> elsewhereHits = new CopyOnWriteArrayList<>();
+    private HttpServer elsewhere;
 
     private StubBackend(HttpServer server) {
         this.server = server;
@@ -60,6 +64,14 @@ final class StubBackend {
             StubBackend backend = new StubBackend(server);
             server.createContext("/rest/api/content", backend::handle);
             server.start();
+            // Target of the redirects: a client that followed them would show up here with its credential.
+            backend.elsewhere = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+            backend.elsewhere.createContext("/", exchange -> {
+                backend.elsewhereHits.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+            });
+            backend.elsewhere.start();
             return backend;
         } catch (IOException ex) {
             throw new UncheckedIOException(ex);
@@ -79,8 +91,13 @@ final class StubBackend {
         return requests.stream().map(Request::authorization).toList();
     }
 
+    List<String> elsewhereHits() {
+        return List.copyOf(elsewhereHits);
+    }
+
     void reset() {
         requests.clear();
+        elsewhereHits.clear();
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -127,6 +144,16 @@ final class StubBackend {
                     "<p>" + HR_SECRET + "</p>", null, expand));
             case "3000" -> respond(exchange, 200, content("3000", "page", "~jkowalski", "My notes", 1, List.of(),
                     "<p>private</p>", null, expand));
+            case "1600" -> redirect(exchange);
+            case "1601" -> respond(exchange, 200, "{\"id\":\"1601\",\"type\":\"page\",\"title\":\"" + BODY_MARKER);
+            case "1602" -> respond(exchange, 200, "{\"type\":\"page\",\"status\":\"current\",\"title\":\""
+                    + BODY_MARKER + "\"}");
+            case "1603" -> respond(exchange, 200, content("1603", "page", "ENG", "Huge", 1, List.of(),
+                    "<p>" + "x".repeat(200_000) + "</p>", null, expand));
+            case "1604" -> {
+                exchange.sendResponseHeaders(200, -1);
+                exchange.close();
+            }
             case "1403" -> respond(exchange, 403, error(403, "Forbidden"));
             case "1500" -> respond(exchange, 500, "{\"statusCode\":500,\"message\":\"boom\",\"seen\":\""
                     + authorization + "\"}");
@@ -139,6 +166,14 @@ final class StubBackend {
         List<String> expand = Arrays.asList(query.getOrDefault("expand", "").split(","));
         ObjectNode response = JSON.createObjectNode();
         ArrayNode results = response.putArray("results");
+        if (cql.startsWith("space = \"REDIR\"")) {
+            redirect(exchange);
+            return;
+        }
+        if (cql.startsWith("space = \"BAD\"")) {
+            respond(exchange, 400, error(400, "Could not parse cql: " + BODY_MARKER));
+            return;
+        }
         if (cql.startsWith("space = \"ENG\"")) {
             results.add(contentNode("1000", "page", "ENG", "Engineering home", 7, List.of(), null, null, expand));
             results.add(contentNode("1001", "page", "ENG", "Release notes", 3, List.of(), null, null, expand));
@@ -227,6 +262,12 @@ final class StubBackend {
                 .put("history", "/rest/api/content/" + id + "/history");
         content.set("_expandable", expandable);
         return content;
+    }
+
+    private void redirect(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Location", "http://127.0.0.1:" + elsewhere.getAddress().getPort()
+                + "/login?note=" + BODY_MARKER);
+        respond(exchange, 302, "<html>" + BODY_MARKER + "</html>");
     }
 
     private static String error(int status, String message) {

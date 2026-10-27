@@ -1,5 +1,6 @@
 package pl.aiwcorpo.mcp.confluence.tools;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
@@ -10,10 +11,10 @@ public final class ToolResults {
     private ToolResults() {
     }
 
-    public record PageHit(String id, String title, int version, String lastUpdated) {
+    public record PageHit(String id, UntrustedText title, int version, String lastUpdated) {
 
         static PageHit of(PageSummary page) {
-            return new PageHit(page.id(), page.title(), page.version(), page.lastUpdated());
+            return new PageHit(page.id(), UntrustedText.plain(page.title()), page.version(), page.lastUpdated());
         }
     }
 
@@ -21,27 +22,37 @@ public final class ToolResults {
     }
 
     /**
-     * Text written by Confluence users, handed out as data. {@code kind} is constant so a client or a reviewer
-     * can tell this field apart from the server's own fields.
+     * Text written by Confluence users, handed out as data (UntrustedText of the contracts, CC-072): page titles
+     * as much as page bodies. {@code kind} is constant so a client or a reviewer can tell this field apart from
+     * the server's own fields; {@code omittedMacros} is this server's addition and only present for bodies.
      */
-    public record UntrustedText(String kind, String format, String text, List<String> omittedMacros,
-                                boolean truncated) {
-    }
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record UntrustedText(String kind, String format, String text, boolean truncated,
+                                List<String> omittedMacros) {
 
-    public record PageResult(String id, String spaceKey, String title, int version, String lastUpdated,
-                             List<String> ancestorIds, UntrustedText body) {
+        static final String KIND = "untrusted-data";
+        static final String PLAIN = "text/plain";
 
-        static PageResult of(Page page) {
-            return new PageResult(page.id(), page.spaceKey(), page.title(), page.version(), page.lastUpdated(),
-                    page.ancestorIds(), new UntrustedText("untrusted-data", "text/plain", page.body().text(),
-                            page.body().omittedMacros(), page.body().truncated()));
+        static UntrustedText plain(String text) {
+            return new UntrustedText(KIND, PLAIN, text == null ? "" : text, false, null);
         }
     }
 
-    public record CreatedPage(String id, String spaceKey, String title, int version) {
+    public record PageResult(String id, String spaceKey, UntrustedText title, int version, String lastUpdated,
+                             List<String> ancestorIds, UntrustedText body) {
+
+        static PageResult of(Page page) {
+            return new PageResult(page.id(), page.spaceKey(), UntrustedText.plain(page.title()), page.version(),
+                    page.lastUpdated(), page.ancestorIds(), new UntrustedText(UntrustedText.KIND,
+                            UntrustedText.PLAIN, page.body().text(), page.body().truncated(),
+                            page.body().omittedMacros()));
+        }
+    }
+
+    public record CreatedPage(String id, String spaceKey, UntrustedText title, int version) {
 
         static CreatedPage of(PageSummary page) {
-            return new CreatedPage(page.id(), page.spaceKey(), page.title(), page.version());
+            return new CreatedPage(page.id(), page.spaceKey(), UntrustedText.plain(page.title()), page.version());
         }
     }
 }

@@ -24,7 +24,7 @@ class SearchPagesToolTest extends ServerTestSupport {
 
             assertThat(result.isError()).isFalse();
             assertThat(text(result)).contains("\"spaceKey\":\"ENG\"", "\"id\":\"1000\"", "\"id\":\"1001\"",
-                    "\"title\":\"Release notes\"", "\"lastUpdated\":\"2026-10-20T10:15:30.000+02:00\"")
+                    "\"title\":{\"kind\":\"untrusted-data\",\"format\":\"text/plain\",\"text\":\"Release notes\",\"truncated\":false}", "\"lastUpdated\":\"2026-10-20T10:15:30.000+02:00\"")
                     .as("blog posts and hits from other spaces are dropped").doesNotContain("1002", "2000", "Salaries")
                     .doesNotContain("_links", "webui");
         }
@@ -74,12 +74,10 @@ class SearchPagesToolTest extends ServerTestSupport {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             for (String space : new String[] {"~jkowalski", "ENG\" OR space = \"HR", "ENG,HR", "EN G", "",
                     "A".repeat(256)}) {
-                assertRejectedArgument(call(client, "search_pages", Map.of("space", space, "text", "x")), "space",
-                        "space must be a space key");
+                assertRejectedArgument(call(client, "search_pages", Map.of("space", space, "text", "x")));
             }
             for (String text : new String[] {"", "   ", "a\nb", "a".repeat(201)}) {
-                assertRejectedArgument(call(client, "search_pages", Map.of("space", "ENG", "text", text)), "text",
-                        "text must be");
+                assertRejectedArgument(call(client, "search_pages", Map.of("space", "ENG", "text", text)));
             }
             assertThat(text(call(client, "search_pages", Map.of("space", "ENG", "text", "*?~"))))
                     .contains("\"error\":\"invalid_argument\"", "text must contain at least one letter or digit");
@@ -87,6 +85,34 @@ class SearchPagesToolTest extends ServerTestSupport {
                     Map.of("space", "ENG", "text", "x", "cql", "type = page"));
             assertThat(cql.isError()).isTrue();
             assertThat(BACKEND.authorizations()).isEmpty();
+        }
+    }
+
+    @Test
+    void aRedirectIsAnErrorNotAnEmptyResult() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "REDIR", "text", "x"));
+
+            assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain(StubBackend.BODY_MARKER);
+            assertThat(BACKEND.elsewhereHits()).isEmpty();
+        }
+    }
+
+    @Test
+    void wordsThatConfluenceCannotParseAreInvalidArgumentWithoutItsMessage() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "BAD", "text", "AND"));
+
+            assertThat(text(result)).contains("\"error\":\"invalid_argument\"").doesNotContain(StubBackend.BODY_MARKER);
+        }
+    }
+
+    @Test
+    void titlesComeBackAsUntrustedData() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "ENG", "text", "release"));
+
+            assertThat(text(result)).doesNotContain("\"title\":\"");
         }
     }
 }

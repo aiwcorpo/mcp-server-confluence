@@ -38,12 +38,15 @@ confluence:
     ssl-bundle: ${MCP_CONFLUENCE_SSL_BUNDLE:}
     connect-timeout: 2s
     read-timeout: 10s
+    max-response-size: 1MB
+    # Plain http outside 'dev' only for the mocks of mcp-platform-dev; never in a real deployment.
+    allow-plain-http: ${MCP_CONFLUENCE_ALLOW_PLAIN_HTTP:false}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,prometheus
+        include: health
   endpoint:
     health:
       probes:

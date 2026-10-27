@@ -12,6 +12,7 @@ import pl.aiwcorpo.mcp.confluence.tools.ToolResults.SearchResult;
 import pl.aiwcorpo.mcp.platform.error.InvalidToolArgumentException;
 import pl.aiwcorpo.mcp.platform.guard.RiskLevel;
 import pl.aiwcorpo.mcp.platform.guard.ToolRisk;
+import pl.aiwcorpo.mcp.platform.input.ArgumentLimits;
 
 /**
  * The MCP tools of this server. Each public {@code @Tool} method is a capability an AI client can call
@@ -45,9 +46,9 @@ public class ConfluencePageTools {
     @ToolRisk(RiskLevel.READ_ONLY)
     public SearchResult searchPages(
             @ToolParam(description = "Key of the space to search, letters and digits only")
-            @StringArgument(maxLength = SPACE_KEY_MAX, pattern = ConfluenceIds.SPACE_KEY) String space,
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey") String space,
             @ToolParam(description = "Words to look for in page titles and content, at most 200 characters")
-            @StringArgument(maxLength = SEARCH_TEXT_MAX, pattern = NON_BLANK_LINE) String text) {
+            @ArgumentLimits(minLength = 1, maxLength = SEARCH_TEXT_MAX, pattern = NON_BLANK_LINE) String text) {
         String spaceKey = validSpace(space);
         String words = Arguments.require("text", text, 1, SEARCH_TEXT_MAX, NON_BLANK_LINE,
                 "1-200 characters on one line");
@@ -65,7 +66,7 @@ public class ConfluencePageTools {
     @ToolRisk(RiskLevel.READ_ONLY)
     public PageResult getPage(
             @ToolParam(description = "Page id, a positive decimal number")
-            @StringArgument(maxLength = PAGE_ID_MAX, pattern = ConfluenceIds.PAGE_ID) String pageId) {
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId") String pageId) {
         return PageResult.of(useCase.getPage(validPageId("pageId", pageId)));
     }
 
@@ -76,13 +77,13 @@ public class ConfluencePageTools {
     @ToolRisk(RiskLevel.UPDATE)
     public CreatedPage createPage(
             @ToolParam(description = "Key of the space, letters and digits only")
-            @StringArgument(maxLength = SPACE_KEY_MAX, pattern = ConfluenceIds.SPACE_KEY) String space,
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey") String space,
             @ToolParam(description = "Id of the parent page in that space, a positive decimal number")
-            @StringArgument(maxLength = PAGE_ID_MAX, pattern = ConfluenceIds.PAGE_ID) String parentId,
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId") String parentId,
             @ToolParam(description = "Page title, one line, at most 255 characters")
-            @StringArgument(maxLength = TITLE_MAX, pattern = NON_BLANK_LINE) String title,
+            @ArgumentLimits(minLength = 1, maxLength = TITLE_MAX, pattern = NON_BLANK_LINE) String title,
             @ToolParam(description = "Page body as plain text, at most 20000 characters")
-            @StringArgument(maxLength = BODY_MAX, pattern = Arguments.MULTI_LINE) String body) {
+            @ArgumentLimits(minLength = 1, maxLength = BODY_MAX, pattern = Arguments.MULTI_LINE) String body) {
         String spaceKey = validSpace(space);
         String parent = validPageId("parentId", parentId);
         String pageTitle = Arguments.require("title", title, 1, TITLE_MAX, NON_BLANK_LINE,

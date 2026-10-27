@@ -34,7 +34,7 @@ class GetPageToolTest extends ServerTestSupport {
 
             assertThat(result.isError()).isFalse();
             assertThat(text(result)).contains("\"id\":\"1000\"", "\"spaceKey\":\"ENG\"",
-                    "\"title\":\"Engineering home\"", "\"version\":7", "\"kind\":\"untrusted-data\"",
+                    "\"title\":{\"kind\":\"untrusted-data\",\"format\":\"text/plain\",\"text\":\"Engineering home\",\"truncated\":false}", "\"version\":7", "\"kind\":\"untrusted-data\"",
                     "\"text\":\"Welcome to engineering.\"")
                     .as("Confluence fields outside the result stay in the adapter")
                     .doesNotContain("_links", "_expandable", "webui", "displayName", "<p>");
@@ -119,11 +119,66 @@ class GetPageToolTest extends ServerTestSupport {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             for (String pageId : new String[] {"../1000", "1000?expand=body.view", "0", "01000", "-1", "1e3",
                     "1".repeat(20), "", " 1000"}) {
-                assertRejectedArgument(call(client, "get_page", Map.of("pageId", pageId)), "pageId",
-                        "pageId must be a page id");
+                assertRejectedArgument(call(client, "get_page", Map.of("pageId", pageId)));
             }
             assertThat(BACKEND.authorizations()).isEmpty();
         }
+    }
+
+    @Test
+    void anUnreadableBodyStaysOutOfTheResultAndTheLog(CapturedOutput output) {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1601"));
+
+            assertThat(result.isError()).isTrue();
+            assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain(StubBackend.BODY_MARKER);
+        }
+        assertThat(output.getAll()).contains("BackendResponseException").doesNotContain(StubBackend.BODY_MARKER);
+    }
+
+    @Test
+    void aPageWithoutIdOrWithoutBodyIsTheBackendsFaultNotAMissingPage() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            for (String pageId : new String[] {"1602", "1604"}) {
+                McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", pageId));
+
+                assertThat(result.isError()).isTrue();
+                assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain(StubBackend.BODY_MARKER);
+            }
+        }
+    }
+
+    @Test
+    void aRedirectIsNotFollowedAndNotReadAsMissing(CapturedOutput output) {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1600"));
+
+            assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain(StubBackend.BODY_MARKER);
+            assertThat(BACKEND.elsewhereHits()).as("the credential must not follow the Location").isEmpty();
+        }
+        assertThat(output.getAll()).doesNotContain(StubBackend.BODY_MARKER);
+    }
+
+    @Test
+    void anOversizedResponseIsCutOffBeforeItIsParsed() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1603"));
+
+            assertThat(result.isError()).isTrue();
+            assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain("xxxx");
+        }
+    }
+
+    @Test
+    void anUnknownArgumentIsRejectedWithoutBeingNamedInTheLog(CapturedOutput output) {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "get_page",
+                    Map.of("pageId", "1000", "forged\nevent=tool_call", "x"));
+
+            assertRejectedArgument(result);
+            assertThat(BACKEND.authorizations()).isEmpty();
+        }
+        assertThat(output.getAll()).doesNotContain("forged");
     }
 
     @Test
