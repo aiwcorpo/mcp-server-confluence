@@ -11,12 +11,15 @@ do modelu, który może go potraktować jak instrukcję. Wzorcami są `get_page`
 3. `mcp-integration`: wywołanie systemu w adapterze. Poświadczenie zawsze z
    `CredentialContext.require(SYSTEM)` i `credential::applyTo`; dla nagłówka innego niż `Authorization`
    (np. `PRIVATE-TOKEN` GitLaba) `credential.value()`. 404 i 403 systemu -> pusty wynik (jeden kod
-   `not_found_or_denied`), 401 -> `CredentialRequiredException(SYSTEM)`. Odpowiedź do prywatnego DTO z
+   `not_found_or_denied`), 401 -> `CredentialRequiredException(SYSTEM)`, przekierowanie, pusta lub nieczytelna
+   odpowiedź i rekord bez `id` -> `BackendResponseException` (bez treści odpowiedzi). Odpowiedź do prywatnego DTO z
    `@JsonIgnoreProperties(ignoreUnknown = true)`, potem do domeny.
 4. `mcp-tools`: cienka metoda `@Tool` z `@ToolRisk`, walidacją argumentów i wywołaniem przypadku użycia;
    mapowanie wyjątku domeny na kod C10 w `ConfluenceToolErrors`.
-5. `mcp-app`: dopisanie beana narzędzia w `McpToolsConfiguration` przez `ConstrainedToolCallbacks.of(...)`
-   (jawna lista; sam `@Tool` nie wystarczy; limity argumentów z `@StringArgument` trafiają do `inputSchema`),
+5. `mcp-app`: dopisanie beana narzędzia w `McpToolsConfiguration` przez `SchemaLimitedToolCallbacks.of(...)` ze startera
+   (jawna lista; sam `@Tool` nie wystarczy; limity z `@ArgumentLimits` trafiają do `inputSchema`, wzorce
+   identyfikatorów przez `contractPattern`, a starter sprawdza wywołanie względem schematu i odpowiada C10
+   `invalid_argument`),
    test w `mcp-app/src/test` przez `ServerTestSupport`, odpowiedź systemu w `StubBackend`.
 6. `docs/api/tools-catalog.md` i tabela narzędzi w README.
 

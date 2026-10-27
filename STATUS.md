@@ -1,13 +1,35 @@
 # STATUS - mcp-server-confluence (ws-04)
 
-M1: osiągnięty (2026-10-27) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE) na starterze 3.0.0-alpha-5, PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, 34 testy na stubie Confluence DC.
+M1: osiągnięty (2026-10-27, runda 2 na starterze 3.0.0-alpha-6) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE), PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, limity w `inputSchema` i walidacja argumentów po stronie startera (C10 `invalid_argument` + C8), https poza `dev`, limit rozmiaru odpowiedzi, tytuły i treść jako `untrusted-data` (CC-072), 46 testów na stubie Confluence DC.
 
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni). M2 nie jest zaczęty.
+
+## Runda 2 (2026-10-27): alpha-6, poprawki template'u, recenzja M1
+
+| Znalezisko | Status |
+| --- | --- |
+| Starter alpha-6: walidacja argumentów w starterze, `@ArgumentLimits` + `SchemaLimitedToolCallbacks.of(...)` zamiast `@StringArgument` + `ConstrainedToolCallbacks`, wzorce przez `contractPattern` | zrobione; własne klasy usunięte; testy oczekują C10 `invalid_argument`, nie tekstu SDK; nazwa nieznanego argumentu nie trafia do logu (test `anUnknownArgumentIsRejectedWithoutBeingNamedInTheLog`) |
+| Template od 7f65f8f: https poza `dev` + `allow-plain-http`, brak przekierowań (3xx = błąd), `max-response-size`, `BackendResponseException`, `ProductionConfigurationTest`, `DevProfileLoopbackTest`, `application-dev.yml`, sandbox systemd, `install.sh`, README (uruchomienie lokalne i z mcp-platform-dev), `prometheus` niewystawiony | zrobione |
+| C-M1 `http` dozwolone poza `dev` | naprawione (`requireBaseUrl`, `ProductionConfigurationTest`) |
+| C-M2 brak limitu rozmiaru odpowiedzi przed Jsoup | naprawione: `BoundedBodyInterceptor` (1MB) liczy bajty przy czytaniu, przed Jacksonem i Jsoup; test `anOversizedResponseIsCutOffBeforeItIsParsed` |
+| C-M3 tytuły stron poza oznaczeniem danych | naprawione: `title` w `search_pages`, `get_page`, `create_page` to `untrusted-data` (CC-072); `omittedMacros` tylko w treści |
+| C-L1 400 z wyszukiwania niemapowane | naprawione: `invalid_argument` ze stałym tekstem; 3xx w wyszukiwaniu to `internal_error`, nie pusty wynik |
+| C-L6 `prometheus` wystawiony | naprawione |
+| C-L7 / W-2 walidacja schematu poza audytem C8 i C10 | zamknięte przez starter alpha-6 |
+| W-1 poprawki template'u nieprzeniesione | zrobione (jw.) |
+| W-4 trzy mechanizmy limitów | zamknięte: tylko `@ArgumentLimits` ze startera |
+| W-3 kształt oznaczenia treści | CC-072 przyjęte w 2.1.0; stosuję kształt (kontrakt 2.0.2 zostaje do kolejnego startera) |
+| C-L2 znaki Unicode formatujące/sterujące (bidi, zero-width, C1) w odczycie i zapisie | nie zrobione: wspólna normalizacja tekstu niezaufanego powinna być w starterze (W-5); lokalna kopia rozjechałaby się z innymi serwerami. Warunek zamknięcia: helper w starterze |
+| C-L3 elementy `ac:*` spoza makr nie filtrowane | nie zrobione: bez wycieku (treść tej samej strony); do rozważenia przy ADF w nowszym DC |
+| C-L4 tekst wyglądający jak HTML w `body.text` | zostaje; `format: text/plain` jest deklaracją, ryzyko po stronie klienta renderującego wynik jako HTML |
+| C-L5 makra z lokalną treścią poza allowlistą (`section`, `column`, `details`, `status`) tracone | nie zrobione: poszerzenie allowlisty wymaga przeglądu każdego makra pod kątem treści z innych stron (np. `details` z `detailssummary`) |
+| C-L8 wielkość liter klucza przestrzeni | nie zrobione: fail-closed, wymaga ustalenia, czy Confluence DC traktuje klucze bez rozróżniania wielkości liter |
+| W-6 / W-7 neutralizacja markupu, zasób przeniesiony przy UPDATE | `create_page` już escapuje; zasób przeniesiony dotyczy `@ResourceRef` (M3) |
 
 ## Co działa
 
 - Wygenerowany z `mcp-server-template` (7f65f8f) przez `./new-server.sh confluence`; BOM
-  `pl.aiwcorpo.mcp:mcp-platform-bom:3.0.0-alpha-5` (kontrakty 2.0.2), `server-id` `mcp-confluence`, endpoint
+  `pl.aiwcorpo.mcp:mcp-platform-bom:3.0.0-alpha-6` (kontrakty 2.0.2), `server-id` `mcp-confluence`, endpoint
   `/mcp`, konfiguracja produkcyjna z template'u bez zmian (mTLS `need`, JWKS gateway'a po https z CA
   wewnętrznym, `jti` w Redisie). Obejście `defaultStatusHandler` z template'u zostało.
 - Narzędzia (rejestracja tylko w `McpToolsConfiguration`):
@@ -23,19 +45,24 @@ M1 według definicji koordynatora (brief ws-04 nie ma kamieni). M2 nie jest zacz
     (akapity, `<br />`); rodzic musi być widoczną stroną tej samej przestrzeni, inaczej `not_found_or_denied` bez
     `POST`; 400 Confluence -> `invalid_argument` z tekstem serwera.
 - Opisy narzędzi deterministyczne, bez instrukcji dla modelu. `inputSchema`: wszystkie argumenty wymagane,
-  `additionalProperties: false`, `minLength`/`maxLength`/`pattern` z `@StringArgument` (Spring AI nie czyta
-  limitów z parametrów, więc `ConstrainedToolCallbacks` dopisuje je do schematu; callbacki zostają
-  `MethodToolCallback`, starter dalej czyta `@ToolRisk`). Wzorce identyfikatorów `ConfluenceSpaceKey` i
-  `ConfluencePageId` z kontraktu (`ConfluenceIds`); błędy przez `InvalidToolArgumentException`.
+  `additionalProperties: false`, `minLength`/`maxLength`/`pattern` z `@ArgumentLimits`, rejestracja przez
+  `SchemaLimitedToolCallbacks.of(...)` (starter). Wzorce `ConfluenceSpaceKey` i `ConfluencePageId` przez
+  `contractPattern`; `ConfluenceIds` (kopia) zostaje tylko jako druga linia walidacji w kodzie i w
+  `ConfluenceService`; `ToolListingTest` pilnuje, że schemat i kod mają ten sam wzorzec. Naruszenie schematu
+  sprawdza i odrzuca starter (C10 `invalid_argument`, zdarzenie C8), błędy z kodu narzędzia idą przez
+  `InvalidToolArgumentException`.
 - Poświadczenie: `CredentialContext.require("confluence")`, tylko schemat `Bearer` (inny -> `credential_required`
   bez wywołania Confluence). 401 -> `credential_required`, 403 i 404 -> ten sam `not_found_or_denied`, treść
   błędów Confluence nie trafia do wyniku ani logu.
-- Testy (`./mvnw verify`, JDK 25, bez Dockera): 34, 0 błędów. `SearchPagesToolTest` 5, `GetPageToolTest` 10,
-  `CreatePageToolTest` 6, `ToolListingTest` 1, `GatewayOnlyAccessTest` 3, `StorageFormatTest` 6,
-  `ConfluenceServiceTest` 3. Opis w README, sekcja "Testy". `StubBackend` odpowiada kształtem Confluence DC 8/9
+- Testy (`./mvnw verify`, JDK 25, bez Dockera): 46, 0 błędów. `SearchPagesToolTest` 8, `GetPageToolTest` 15,
+  `CreatePageToolTest` 6, `ToolListingTest` 1, `GatewayOnlyAccessTest` 3, `ProductionConfigurationTest` 3,
+  `DevProfileLoopbackTest` 1, `StorageFormatTest` 6, `ConfluenceServiceTest` 3. Opis w README, sekcja "Testy". `StubBackend` odpowiada kształtem Confluence DC 8/9
   (`expand`, `_links`, `_expandable`, błędy `{statusCode, data, message}`, `POST` 200 z treścią) i oddaje
   rozwiniętą treść HR wyłącznie w `body.view`, więc test include łapie adapter, który poprosiłby o widok.
-- Smoke konfiguracji produkcyjnej na hoście (port 18510, certyfikat i użytkownik Redisa `mcp-confluence` z
+- Smoke runda 2 (alpha-6): `SPRING_PROFILES_ACTIVE=dev`, port 18510, według README "Uruchomienie lokalne bez
+  środowiska": `/actuator/health` 200, `POST /mcp` bez JWT 401, `/actuator/prometheus` nie jest wystawiony. Proces
+  zatrzymany. Wariant mTLS z mcp-platform-dev nie był powtarzany po alpha-6.
+- Smoke konfiguracji produkcyjnej na hoście, runda 1 (port 18510, certyfikat i użytkownik Redisa `mcp-confluence` z
   `mcp-platform-dev`): start, `/actuator/health` po mTLS z certyfikatem gateway'a 200, `POST /mcp` bez JWT 401,
   bez certyfikatu klienta handshake zerwany. Proces zatrzymany. Pełnego przebiegu przez gateway nie robiłem
   (gateway zna dziś tylko `mcp-jira`, mocka Confluence nie ma).
@@ -59,14 +86,9 @@ przestrzeni) zastąpi `spaceInScope`.
   gateway nie zna przestrzeni z samego `pageId`. Sygnatura zostaje zgodna z briefem (bez argumentu `space`).
   Warunek zamknięcia: starter beta z `@ResourceRef(Confluence::Page)` i oceną polityki na serwerze, wpiętą w
   `ConfluenceService.spaceInScope` (M3).
-- Walidacja schematu w MCP SDK: wartości spoza `inputSchema` (wzorzec, długość, dodatkowy argument) odrzuca MCP SDK
-  przed narzędziem tekstem `Tool (...) input validation failed: ...` (`isError: true`), nie obiektem C10
-  `invalid_argument` (ograniczenie startera, jego STATUS). Treść tego tekstu to wzorzec ze schematu, bez wartości
-  argumentu. Wartości zgodne ze schematem, a odrzucane przez serwer (np. `text` bez litery i cyfry), dają C10.
-  Testy akceptują obie formy (`ServerTestSupport.assertRejectedArgument`) i zawsze sprawdzają, że Confluence nie
-  dostał żądania. Zrezygnowanie z limitów w schemacie przywróciłoby C10, ale M1 wymaga limitów w schemacie.
-- Oznaczenie treści jako dane: kształt własny (`kind: "untrusted-data"`), bo kontrakt go nie ma; propozycja CC
-  niżej. Tytuły stron są zwykłymi polami.
+- Kształt `untrusted-data` to UntrustedText z CC-072 (przyjęte w kontraktach 2.1.0); kontrakty zostają na 2.0.2
+  przez BOM startera, więc kształt nie jest jeszcze sprawdzany schematem. Zalecenie CC-072 (`outputSchema`
+  narzędzi odwołujące się do UntrustedText) czeka na starter z kontraktami 2.1.x.
 - `parentId` jest wymagany (tabela briefu): narzędzie nie tworzy stron najwyższego poziomu przestrzeni.
 - `search_pages` bez stronicowania (stałe 25) i bez fragmentów treści (`excerpt` z wyszukiwarki może pochodzić z
   renderowanej treści z makrami include, więc nie jest zwracany).
@@ -86,10 +108,9 @@ przestrzeni) zastąpi `spaceInScope`.
   globalnych i jednej osobistej oraz stroną z makrem include/excerpt-include wskazującym inną przestrzeń
   (`body.view` z rozwiniętą treścią). Do tego usługa `mcp-confluence` w profilu `full` z `MCP_CONNECT_URL`
   (uwaga z STATUS template'u). Kształt odpowiedzi: `mcp-app/src/test/java/.../StubBackend.java`.
-- ws-02 (starter): (1) odpowiedź walidacji schematu MCP SDK jako C10 `invalid_argument` (już w STATUS startera,
-  beta); (2) limity argumentów w `inputSchema`: dziś każdy serwer musi to obejść sam (`@StringArgument` +
-  `ConstrainedToolCallbacks` tutaj); dobrze byłoby mieć to w starterze, razem z walidacją z tego samego źródła.
-- ws-03 (template): wzorzec limitów w `inputSchema` (jak wyżej), jeśli nie trafi do startera.
+- ws-02 (starter): helper normalizacji tekstu niezaufanego (bidi, zero-width, C1, niesparowane surogaty;
+  W-5, C-L2) dla argumentów i dla treści oddawanej modelowi; starter z kontraktami 2.1.x (UntrustedText jako
+  schemat, `outputSchema`). Limity i walidacja schematu: dostarczone w alpha-6.
 - ws-05 (gateway): wpis `mcp-confluence` w konfiguracji (`internal-url: https://mcp-confluence.internal:8443/mcp`,
   SAN `mcp-confluence.internal`), system `confluence` z poświadczeniem `user-secret` (scheme `Bearer`).
 - ws-06 (broker): Confluence DC przyjmuje PAT jako `Bearer`. `AtlassianDcAdapter` woła dla Confluence
@@ -98,7 +119,9 @@ przestrzeni) zastąpi `spaceInScope`.
 
 ## Propozycje zmian kontraktu
 
-Dopisane na końcu `mcp-contracts/CONTRACT_CHANGES.md`, status open:
+W `mcp-contracts/CONTRACT_CHANGES.md`, przyjęte w 2.1.0 (2026-10-27):
 
-- CC-??? (C10/C6) "Wspólne oznaczenie treści z systemu w wynikach narzędzi".
-- CC-??? (C4.1) "Whoami Confluence Data Center": `/rest/api/user/current` zamiast `/rest/api/2/myself`.
+- CC-072 (C10/C6) "Wspólne oznaczenie treści z systemu w wynikach narzędzi" (stosowane, patrz wyżej).
+- CC-073 (C4.1) "Whoami Confluence Data Center": `/rest/api/user/current` zamiast `/rest/api/2/myself`.
+
+Kategoria (b) z recenzji M1 (zmiana kontraktu) dla tego serwera: brak poza CC-072.

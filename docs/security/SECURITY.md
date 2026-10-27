@@ -19,7 +19,12 @@ Niezmienniki platformy (`mcp-platform-plan/00-overview.md`) i to, gdzie serwer j
 - Każdy argument narzędzia to dane od modelu: wzorzec, długość, zamknięte listy, przed wywołaniem systemu.
   Szczegóły: `docs/jak-napisac-narzedzie.md`.
 - Adresy: tylko `MCP_<SYSTEM>_URL` z konfiguracji, ścieżki API z szablonu URI z argumentami jako zmiennymi
-  (kodowane przez `RestClient`), bez przekierowań; żadnych adresów z argumentów (SSRF).
+  (kodowane przez `RestClient`), bez przekierowań (3xx to błąd); poza `dev` tylko `https`, `http` jawnym
+  `MCP_CONFLUENCE_ALLOW_PLAIN_HTTP` dla mocków środowiska dev; żadnych adresów z argumentów (SSRF).
+- Odpowiedź Confluence: najwyżej `max-response-size` (1 MB), liczone przy czytaniu, więc ani Jackson, ani Jsoup nie
+  dostają więcej; nieczytelna odpowiedź 2xx nie trafia do komunikatu ani logu (`BackendResponseException`).
+- Profil `dev` (klucze testowe, bez mTLS) wstaje tylko na adresie pętli zwrotnej (test
+  `DevProfileLoopbackTest`); serwer, do którego łączy się gateway, działa wyłącznie w konfiguracji bazowej.
 - Serwer nie ma konta w systemie. Typ `service-account` (np. service desk, D10) przychodzi też przez C3, a
   wtedy serwer jest główną granicą autoryzacji i musi sprawdzać zakres zasobu sam (starter beta).
 - Hinty MCP (`readOnlyHint`, `destructiveHint`) są informacją dla klienta, nie zabezpieczeniem.

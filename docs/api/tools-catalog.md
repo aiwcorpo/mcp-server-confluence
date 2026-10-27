@@ -11,8 +11,9 @@ tą tabelą.
 | `create_page` | `UPDATE` | `update` | `space`, `parentId` (`^[1-9][0-9]{0,18}$`), `title` (1-255, jedna linia, nie same odstępy), `body` (1-20000, bez znaków sterujących poza tab, LF, CR) | `space` -> `Confluence::Space`, `parentId` -> `Confluence::Page` | `mcp-confluence-write` | `user-secret` (PAT), C3 `Bearer` |
 
 Wszystkie argumenty są wymagane, `inputSchema` ma `additionalProperties: false` i limity
-`minLength`/`maxLength`/`pattern` (z `@StringArgument`). Wzorce identyfikatorów to `ConfluenceSpaceKey` i
-`ConfluencePageId` z `mcp-contracts` 2.0.2 (`ConfluenceIds`).
+`minLength`/`maxLength`/`pattern` (z `@ArgumentLimits`). Wzorce identyfikatorów to `ConfluenceSpaceKey` i
+`ConfluencePageId` z `mcp-contracts` 2.0.2, brane przez `contractPattern` ze startera (kopia w `ConfluenceIds`
+służy drugiej linii walidacji w kodzie). Naruszenie schematu daje `invalid_argument` ze startera.
 
 ## Wywołania Confluence Data Center
 
@@ -29,7 +30,8 @@ Wszystkie argumenty są wymagane, `inputSchema` ma `additionalProperties: false`
 | 401 | `credential_required` (z `connectUrl` portalu) |
 | 403, 404 | `not_found_or_denied`, ten sam tekst; w wyszukiwaniu pusta lista |
 | 400 przy `POST` | `invalid_argument`, tekst serwera (np. duplikat tytułu) |
-| 5xx, błąd odczytu | `internal_error`, bez treści odpowiedzi |
+| 400 przy wyszukiwaniu | `invalid_argument`, stały tekst |
+| 5xx, błąd odczytu, 3xx, pusta lub nieczytelna odpowiedź, treść bez `id`, odpowiedź ponad `max-response-size` | `internal_error`, bez treści odpowiedzi |
 | treść inna niż `type: page` / `status: current` | `not_found_or_denied`, w wyszukiwaniu pominięta |
 | strona w przestrzeni osobistej (`~user`) | `not_found_or_denied` |
 | rodzic z innej przestrzeni niż `space` | `not_found_or_denied`, bez `POST` |
@@ -38,8 +40,10 @@ Wszystkie argumenty są wymagane, `inputSchema` ma `additionalProperties: false`
 
 `get_page` zwraca treść strony w `body` z `kind: "untrusted-data"` i `format: "text/plain"`: to tekst
 użytkowników Confluence, nie polecenia. Makra spoza listy (`code`, `noformat`, `info`, `note`, `warning`, `tip`,
-`panel`, `expand`, `excerpt`) nie są rozwijane, a ich nazwy są w `body.omittedMacros`. Tytuły w wynikach to też
-tekst z Confluence.
+`panel`, `expand`, `excerpt`) nie są rozwijane, a ich nazwy są w `body.omittedMacros`. Tytuły stron (`title` w `search_pages`, `get_page`
+i `create_page`) mają ten sam kształt, bez `omittedMacros`; `omittedMacros` jest tylko w treści. Poza
+kształtem `untrusted-data` w wynikach są wyłącznie identyfikatory sprawdzone wzorcem, klucz przestrzeni, numery
+wersji i czas ostatniej zmiany.
 
 Konwencje: nazwy `snake_case`, czasownik i obiekt, bez prefiksu systemu (dokłada go gateway); opis mówi, co
 narzędzie zwraca, bez instrukcji dla modelu.

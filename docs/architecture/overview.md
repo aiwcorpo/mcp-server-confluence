@@ -43,7 +43,8 @@ tryb ASYNC.
 - Konfiguracja bazowa jest produkcyjna; profil `dev` istnieje dla testów i wyłącza tylko TLS.
 - Jeden system na serwer: `server-id` = `mcp-<system>`, `CredentialContext.require` innego systemu to błąd
   programisty.
-- Adapter nie podąża za przekierowaniami i nie czyta treści błędów systemu.
+- Adapter nie podąża za przekierowaniami (3xx to `BackendResponseException`), nie czyta treści błędów systemu i
+  czyta odpowiedź najwyżej do `max-response-size`.
 - Treść strony tylko z `body.storage`, przetwarzana w serwerze (`StorageFormat`, jsoup w trybie XML) do zwykłego
   tekstu z listą dozwolonych makr. Widoki renderowane przez Confluence (`body.view`, `export_view`) zawierają
   rozwinięte include/excerpt-include z innych przestrzeni, których polityka nie oceniała.
