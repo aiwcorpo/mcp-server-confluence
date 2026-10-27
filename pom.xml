@@ -36,7 +36,8 @@
         <java.version>25</java.version>
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <mcp-platform.version>3.0.0-alpha-3</mcp-platform.version>
+        <mcp-platform.version>3.0.0-alpha-4</mcp-platform.version>
+        <jsoup.version>1.22.1</jsoup.version>
     </properties>
 
     <dependencyManagement>
@@ -48,6 +49,12 @@
                 <version>${mcp-platform.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Reads Confluence storage format (XHTML with ac:/ri: elements) without expanding macros. -->
+            <dependency>
+                <groupId>org.jsoup</groupId>
+                <artifactId>jsoup</artifactId>
+                <version>${jsoup.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

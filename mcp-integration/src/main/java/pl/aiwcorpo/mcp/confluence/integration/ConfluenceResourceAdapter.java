@@ -3,31 +3,44 @@ package pl.aiwcorpo.mcp.confluence.integration;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
-import pl.aiwcorpo.mcp.confluence.core.domain.ConfluenceRecord;
+import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
+import pl.aiwcorpo.mcp.confluence.core.domain.Page;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRejectedException;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.port.out.ConfluenceResourcePort;
 import pl.aiwcorpo.mcp.platform.security.BackendCredential;
 import pl.aiwcorpo.mcp.platform.security.CredentialContext;
 import pl.aiwcorpo.mcp.platform.security.CredentialRequiredException;
 
 /**
- * Calls the backend API as the user: with the credential the gateway resolved for this request (C3), never
- * with an account of the server.
+ * Confluence Data Center REST API ({@code /rest/api/content}) as the calling user: with the personal access
+ * token the gateway resolved for this request (C3, {@code Authorization: Bearer}), never with an account of
+ * the server.
  *
  * <p>Error mapping matters for security: 404 and 403 both become "not visible" (one client-facing code,
- * {@code not_found_or_denied}), and 401 means the stored credential no longer works, so the user is sent to
- * the portal to reconnect ({@code credential_required}). A failed call becomes an exception with the status
+ * {@code not_found_or_denied}), and 401 means the stored token no longer works, so the user is sent to the
+ * portal to reconnect ({@code credential_required}). A failed call becomes an exception with the status
  * alone, so no response body reaches a message or a log line.
+ *
+ * <p>Page bodies are read as {@code body.storage} only. {@code body.view} and {@code body.export_view} are
+ * rendered by Confluence with include and excerpt-include macros expanded, i.e. with content of other pages
+ * and spaces, so this adapter never asks for them.
  */
 @Component
 @EnableConfigurationProperties(ConfluenceBackendProperties.class)
@@ -36,12 +49,20 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     /** System id of this server: {@code server-id} is {@code mcp-<system>}, and the starter refuses any other. */
     static final String SYSTEM = "confluence";
 
+    static final String CONTENT = "/rest/api/content";
+    static final String PAGE_EXPAND = "body.storage,space,version,ancestors";
+    static final String SUMMARY_EXPAND = "space,version";
+
+    /** Size limit of the page text handed to the model. */
+    static final int MAX_PAGE_TEXT = 50_000;
+
     private final RestClient client;
 
     public ConfluenceResourceAdapter(ConfluenceBackendProperties properties, ObjectProvider<SslBundles> sslBundles) {
         this.client = RestClient.builder()
                 .baseUrl(requireBaseUrl(properties.baseUrl()))
                 .requestFactory(requestFactory(properties, sslBundles))
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .defaultStatusHandler(HttpStatusCode::isError, (request, response) -> {
                     // Status only: the body and headers of a failed call may echo the credential or carry backend
                     // detail, and the exception message ends up in the starter's tool_failed log line.
@@ -54,20 +75,95 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @Override
-    public Optional<ConfluenceRecord> findById(String recordId) {
-        BackendCredential credential = CredentialContext.require(SYSTEM);
+    public List<PageSummary> searchPages(String spaceKey, String text, int limit) {
+        BackendCredential credential = credential();
         try {
-            RecordResponse response = client.get()
-                    .uri("/api/records/{id}", recordId)
+            SearchResponse response = client.get()
+                    .uri(uri -> uri.path(CONTENT + "/search")
+                            .queryParam("cql", "{cql}")
+                            .queryParam("limit", limit)
+                            .queryParam("expand", SUMMARY_EXPAND)
+                            .build(Map.of("cql", Cql.pagesInSpaceMatching(spaceKey, text))))
                     .headers(credential::applyTo)
                     .retrieve()
-                    .body(RecordResponse.class);
-            return Optional.ofNullable(response).map(RecordResponse::toDomain);
+                    .body(SearchResponse.class);
+            if (response == null || response.results() == null) {
+                return List.of();
+            }
+            return response.results().stream()
+                    .filter(ContentResponse::isCurrentPage)
+                    .map(ContentResponse::toSummary)
+                    .toList();
+        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
+            return List.of();
+        } catch (HttpClientErrorException.Unauthorized expired) {
+            throw new CredentialRequiredException(SYSTEM);
+        }
+    }
+
+    @Override
+    public Optional<Page> findPage(String pageId) {
+        return fetch(pageId, PAGE_EXPAND).map(ContentResponse::toPage);
+    }
+
+    @Override
+    public Optional<PageSummary> findPageSummary(String pageId) {
+        return fetch(pageId, SUMMARY_EXPAND).map(ContentResponse::toSummary);
+    }
+
+    @Override
+    public PageSummary createPage(NewPage page) {
+        BackendCredential credential = credential();
+        CreateRequest request = new CreateRequest("page", page.title(), new SpaceRef(page.spaceKey()),
+                List.of(new AncestorRef(page.parentId())),
+                new Body(new Storage(StorageFormat.fromPlainText(page.body()), "storage")));
+        try {
+            ContentResponse created = client.post()
+                    .uri(CONTENT)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .headers(credential::applyTo)
+                    .body(request)
+                    .retrieve()
+                    .body(ContentResponse.class);
+            if (created == null || created.id() == null) {
+                throw new IllegalStateException("confluence returned no content for the created page");
+            }
+            return created.toSummary();
+        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
+            throw new PageNotFoundException();
+        } catch (HttpClientErrorException.Unauthorized expired) {
+            throw new CredentialRequiredException(SYSTEM);
+        } catch (HttpClientErrorException.BadRequest rejected) {
+            throw new PageRejectedException();
+        }
+    }
+
+    private Optional<ContentResponse> fetch(String pageId, String expand) {
+        BackendCredential credential = credential();
+        try {
+            ContentResponse response = client.get()
+                    .uri(uri -> uri.path(CONTENT + "/{id}").queryParam("expand", expand).build(pageId))
+                    .headers(credential::applyTo)
+                    .retrieve()
+                    .body(ContentResponse.class);
+            return Optional.ofNullable(response).filter(ContentResponse::isCurrentPage);
         } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
             return Optional.empty();
         } catch (HttpClientErrorException.Unauthorized expired) {
             throw new CredentialRequiredException(SYSTEM);
         }
+    }
+
+    /**
+     * Confluence Data Center takes personal access tokens (and OAuth access tokens) as {@code Bearer}. Any other
+     * scheme cannot work against the API, so the user is sent to the portal to connect a token instead.
+     */
+    private static BackendCredential credential() {
+        BackendCredential credential = CredentialContext.require(SYSTEM);
+        if (credential.scheme() != BackendCredential.Scheme.BEARER) {
+            throw new CredentialRequiredException(SYSTEM);
+        }
+        return credential;
     }
 
     private static String requireBaseUrl(String baseUrl) {
@@ -95,12 +191,72 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         return factory;
     }
 
-    /** The backend's representation; unknown fields are dropped here and never reach the model. */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record RecordResponse(String id, String project, String title, String status) {
+    // Confluence's representations; unknown fields are dropped here and never reach the model.
 
-        ConfluenceRecord toDomain() {
-            return new ConfluenceRecord(id, project, title, status);
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SearchResponse(List<ContentResponse> results) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record ContentResponse(String id, String type, String status, String title, SpaceResponse space,
+                           VersionResponse version, List<AncestorResponse> ancestors, BodyResponse body) {
+
+        /** Blog posts, comments and attachments share the content API; the tools are about pages only. */
+        boolean isCurrentPage() {
+            return id != null && "page".equals(type) && (status == null || "current".equals(status));
         }
+
+        PageSummary toSummary() {
+            return new PageSummary(id, spaceKey(), title, version == null ? 0 : version.number(),
+                    version == null ? null : version.when());
+        }
+
+        Page toPage() {
+            List<String> ancestorIds = ancestors == null ? List.of()
+                    : ancestors.stream().map(AncestorResponse::id).filter(Objects::nonNull).toList();
+            String storage = body == null || body.storage() == null ? "" : body.storage().value();
+            return new Page(id, spaceKey(), title, version == null ? 0 : version.number(),
+                    version == null ? null : version.when(), ancestorIds,
+                    StorageFormat.toText(storage, MAX_PAGE_TEXT));
+        }
+
+        private String spaceKey() {
+            return space == null ? null : space.key();
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SpaceResponse(String key) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record VersionResponse(int number, String when) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record AncestorResponse(String id) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record BodyResponse(StorageResponse storage) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record StorageResponse(String value) {
+    }
+
+    record CreateRequest(String type, String title, SpaceRef space, List<AncestorRef> ancestors, Body body) {
+    }
+
+    record SpaceRef(String key) {
+    }
+
+    record AncestorRef(String id) {
+    }
+
+    record Body(Storage storage) {
+    }
+
+    record Storage(String value, String representation) {
     }
 }

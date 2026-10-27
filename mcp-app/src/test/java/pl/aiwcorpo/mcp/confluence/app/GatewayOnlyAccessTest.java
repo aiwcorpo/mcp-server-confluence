@@ -16,8 +16,8 @@ import pl.aiwcorpo.mcp.platform.test.TestGateway;
 /** Only the gateway gets in: no internal JWT, or one not meant for this call, is 401 and never anonymous. */
 class GatewayOnlyAccessTest extends ServerTestSupport {
 
-    private static final String GET_RECORD = """
-            {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_record","arguments":{"recordId":"ABC-1"}}}""";
+    private static final String GET_PAGE = """
+            {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_page","arguments":{"pageId":"1000"}}}""";
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
@@ -28,7 +28,7 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
 
     @Test
     void withoutJwtEveryMcpRequestIs401() throws Exception {
-        HttpResponse<String> call = post(GET_RECORD, Map.of("X-MCP-Credential", "Bearer stolen-pat",
+        HttpResponse<String> call = post(GET_PAGE, Map.of("X-MCP-Credential", "Bearer stolen-pat",
                 "X-MCP-Credential-Type", "user-secret"));
         assertThat(call.statusCode()).isEqualTo(401);
         assertThat(call.headers().firstValue("WWW-Authenticate")).hasValue("Bearer");
@@ -44,18 +44,18 @@ class GatewayOnlyAccessTest extends ServerTestSupport {
 
     @Test
     void aTokenForAnotherServerToolOrRequestIsRejected() throws Exception {
-        TestGateway.Minted otherServer = GATEWAY.user().tool("get_record").audience(anotherServerId()).mint();
-        assertThat(post(GET_RECORD, otherServer.headers()).statusCode()).isEqualTo(401);
+        TestGateway.Minted otherServer = GATEWAY.user().tool("get_page").audience(anotherServerId()).mint();
+        assertThat(post(GET_PAGE, otherServer.headers()).statusCode()).isEqualTo(401);
 
-        TestGateway.Minted otherTool = GATEWAY.user().tool("search_records").mint();
-        assertThat(post(GET_RECORD, otherTool.headers()).statusCode()).isEqualTo(401);
+        TestGateway.Minted otherTool = GATEWAY.user().tool("search_pages").mint();
+        assertThat(post(GET_PAGE, otherTool.headers()).statusCode()).isEqualTo(401);
 
         TestGateway.Minted service = GATEWAY.service().mint();
-        assertThat(post(GET_RECORD, service.headers()).statusCode()).isEqualTo(401);
+        assertThat(post(GET_PAGE, service.headers()).statusCode()).isEqualTo(401);
 
-        TestGateway.Minted expired = GATEWAY.user().tool("get_record")
+        TestGateway.Minted expired = GATEWAY.user().tool("get_page")
                 .issuedAt(Instant.now().minusSeconds(300)).mint();
-        assertThat(post(GET_RECORD, expired.headers()).statusCode()).isEqualTo(401);
+        assertThat(post(GET_PAGE, expired.headers()).statusCode()).isEqualTo(401);
         assertThat(BACKEND.authorizations()).isEmpty();
     }
 

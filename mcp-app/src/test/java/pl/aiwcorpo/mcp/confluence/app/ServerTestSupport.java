@@ -32,6 +32,7 @@ abstract class ServerTestSupport {
     static final String SERVER_ID = "mcp-confluence";
     static final String SYSTEM = "confluence";
     static final String ENDPOINT = "/mcp";
+    static final String PAT = "Bearer confluence-pat-of-jkowalski-7f3a";
     static final Set<String> CONTRACT_SYSTEMS = contractSystems();
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
@@ -75,6 +76,22 @@ abstract class ServerTestSupport {
                     "\"connectUrl\":\"http://localhost:18090/connections?system=" + SYSTEM + "\"");
         } else {
             assertThat(text(result)).contains("\"error\":\"internal_error\"");
+        }
+    }
+
+    /**
+     * The argument was refused before Confluence. Values outside the published inputSchema are refused by the
+     * MCP SDK's own schema check, which answers with its text instead of a C10 object (known limitation of
+     * starter 3.0.0-alpha, see STATUS.md); values the schema allows but the tool does not get C10
+     * {@code invalid_argument} with the server's message.
+     */
+    static void assertRejectedArgument(McpSchema.CallToolResult result, String argument, String serverMessage) {
+        assertThat(result.isError()).isTrue();
+        String text = text(result);
+        if (text.contains("input validation failed")) {
+            assertThat(text).contains("/" + argument + ":");
+        } else {
+            assertThat(text).contains("\"error\":\"invalid_argument\"", serverMessage);
         }
     }
 
