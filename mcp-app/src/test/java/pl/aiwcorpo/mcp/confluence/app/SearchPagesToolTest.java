@@ -28,10 +28,10 @@ class SearchPagesToolTest extends ServerTestSupport {
                     .as("blog posts and hits from other spaces are dropped").doesNotContain("1002", "2000", "Salaries")
                     .doesNotContain("_links", "webui");
         }
-        assertThat(BACKEND.requests()).singleElement().satisfies(request -> {
+        assertThat(BACKEND.requests()).allSatisfy(request -> assertThat(request.authorization()).isEqualTo(PAT));
+        assertThat(BACKEND.requests().getFirst()).satisfies(request -> {
             assertThat(request.path()).isEqualTo("/rest/api/content/search");
-            assertThat(request.authorization()).isEqualTo(PAT);
-            assertThat(request.query()).containsEntry("cql", "space = \"ENG\" AND type = page AND text ~ \"release notes\"")
+            assertThat(request.query()).containsEntry("cql", "space = \"ENG\" AND type = \"page\" AND text ~ \"release notes\"")
                     .containsEntry("limit", "25").containsEntry("expand", "space,version");
         });
     }
@@ -45,7 +45,7 @@ class SearchPagesToolTest extends ServerTestSupport {
             assertThat(result.isError()).isFalse();
         }
         assertThat(BACKEND.requests().getFirst().query().get("cql"))
-                .isEqualTo("space = \"ENG\" AND type = page AND text ~ \"x OR space HR OR text\"");
+                .isEqualTo("space = \"ENG\" AND type = \"page\" AND text ~ \"x OR space HR OR text\"");
     }
 
     @Test

@@ -31,6 +31,19 @@ aiwcorpo:
         jwks-uri: ${MCP_GATEWAY_JWKS_URI:}
       credential:
         connect-url: ${MCP_CONNECT_URL:}
+      # The signed policy bundle (C7), the same one the gateway evaluates. The server does not start without a first
+      # bundle, and state-dir keeps the last accepted revision across restarts so an older signed bundle is refused.
+      policy:
+        main:
+          url: ${MCP_POLICY_URL:}
+          key-id: ${MCP_POLICY_KEY_ID:}
+          public-key-file: ${MCP_POLICY_PUBLIC_KEY_FILE:}
+        state-dir: ${MCP_POLICY_STATE_DIR:}
+      # Description of this server for the registry (GET /mcp-manifest, C6); the tool entries come from the code.
+      manifest:
+        version: '@project.version@'
+        internal-url: ${MCP_INTERNAL_URL:}
+        accepted-credential-types: ${MCP_ACCEPTED_CREDENTIAL_TYPES:user-secret}
 
 confluence:
   backend:

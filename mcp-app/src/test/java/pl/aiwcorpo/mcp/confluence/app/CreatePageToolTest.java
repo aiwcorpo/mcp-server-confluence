@@ -22,7 +22,7 @@ class CreatePageToolTest extends ServerTestSupport {
 
     @Test
     void createsThePageUnderTheParentWithTheBodyEscaped() {
-        try (McpSyncClient client = clientWithCredential(PAT)) {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
             McpSchema.CallToolResult result = call(client, "create_page", Map.of("space", "ENG", "parentId", "1000",
                     "title", "Retro 2.1", "body", """
                             Went well: <b>release</b>
@@ -34,10 +34,10 @@ class CreatePageToolTest extends ServerTestSupport {
             assertThat(text(result)).contains("\"id\":\"5001\"", "\"spaceKey\":\"ENG\"", "\"title\":{\"kind\":\"untrusted-data\",\"format\":\"text/plain\",\"text\":\"Retro 2.1\",\"truncated\":false}",
                     "\"version\":1").doesNotContain("Went well", "_links");
         }
-        assertThat(BACKEND.requests()).hasSize(2).allSatisfy(request -> assertThat(request.authorization()).isEqualTo(PAT));
-        StubBackend.Request parentCheck = BACKEND.requests().get(0);
-        assertThat(parentCheck.path()).isEqualTo("/rest/api/content/1000");
-        StubBackend.Request create = BACKEND.requests().get(1);
+        assertThat(BACKEND.requests()).hasSize(3).allSatisfy(request -> assertThat(request.authorization()).isEqualTo(PAT));
+        assertThat(BACKEND.requests().get(0).path()).as("the parent as the policy judges it").isEqualTo("/rest/api/content/1000");
+        assertThat(BACKEND.requests().get(1).path()).isEqualTo("/rest/api/space/ENG");
+        StubBackend.Request create = BACKEND.requests().get(2);
         assertThat(create.method()).isEqualTo("POST");
         JsonNode sent = JSON.readTree(create.body());
         assertThat(sent.path("type").asString()).isEqualTo("page");
@@ -52,7 +52,7 @@ class CreatePageToolTest extends ServerTestSupport {
 
     @Test
     void aReplyWithoutTheSpaceStillReportsTheCreatedPage() {
-        try (McpSyncClient client = clientWithCredential(PAT)) {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
             McpSchema.CallToolResult result = call(client, "create_page", Map.of("space", "ENG", "parentId", "1000",
                     "title", "No space in reply", "body", "text"));
 
@@ -63,7 +63,7 @@ class CreatePageToolTest extends ServerTestSupport {
 
     @Test
     void isListedAsAnUpdateNotAsReadOnly() {
-        try (McpSyncClient client = clientWithCredential(PAT)) {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
             McpSchema.Tool tool = client.listTools().tools().stream()
                     .filter(t -> t.name().equals("create_page")).findFirst().orElseThrow();
 
@@ -74,7 +74,7 @@ class CreatePageToolTest extends ServerTestSupport {
 
     @Test
     void aParentFromAnotherSpaceIsNotFoundAndNothingIsCreated() {
-        try (McpSyncClient client = clientWithCredential(PAT)) {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
             McpSchema.CallToolResult otherSpace = call(client, "create_page",
                     Map.of("space", "ENG", "parentId", "2000", "title", "Leak", "body", "x"));
             McpSchema.CallToolResult missing = call(client, "create_page",
@@ -91,7 +91,7 @@ class CreatePageToolTest extends ServerTestSupport {
 
     @Test
     void confluenceRefusalsMapToC10WithoutConfluenceText() {
-        try (McpSyncClient client = clientWithCredential(PAT)) {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
             McpSchema.CallToolResult duplicate = call(client, "create_page",
                     Map.of("space", "ENG", "parentId", "1000", "title", "Existing", "body", "x"));
             assertThat(text(duplicate)).contains("\"error\":\"invalid_argument\"", "already has a page with this title")
@@ -102,11 +102,11 @@ class CreatePageToolTest extends ServerTestSupport {
     @Test
     void withoutCredentialOrWithAnExpiredOneAsksToConnectTheAccount() {
         Map<String, Object> arguments = Map.of("space", "ENG", "parentId", "1000", "title", "T", "body", "x");
-        try (McpSyncClient client = clientWithCredential(null)) {
+        try (McpSyncClient client = writerWithCredential(null)) {
             assertCredentialRequired(call(client, "create_page", arguments));
             assertThat(BACKEND.authorizations()).isEmpty();
         }
-        try (McpSyncClient client = clientWithCredential(StubBackend.EXPIRED_CREDENTIAL)) {
+        try (McpSyncClient client = writerWithCredential(StubBackend.EXPIRED_CREDENTIAL)) {
             assertCredentialRequired(call(client, "create_page", arguments));
         }
         assertThat(BACKEND.requests()).noneMatch(request -> "POST".equals(request.method()));
@@ -114,7 +114,7 @@ class CreatePageToolTest extends ServerTestSupport {
 
     @Test
     void invalidArgumentsAreRejectedBeforeConfluence() {
-        try (McpSyncClient client = clientWithCredential(PAT)) {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
             assertInvalid(client, Map.of("space", "~jkowalski", "parentId", "1000", "title", "T", "body", "x"));
             assertInvalid(client, Map.of("space", "ENG", "parentId", "1000/../2000", "title", "T", "body", "x"));
             assertInvalid(client, Map.of("space", "ENG", "parentId", "0", "title", "T", "body", "x"));

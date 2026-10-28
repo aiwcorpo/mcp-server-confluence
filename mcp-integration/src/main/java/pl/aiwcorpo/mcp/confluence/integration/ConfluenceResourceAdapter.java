@@ -3,8 +3,12 @@ package pl.aiwcorpo.mcp.confluence.integration;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -24,11 +28,14 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import pl.aiwcorpo.mcp.confluence.core.domain.ConfluenceIds;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRejectedException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.port.out.ConfluenceResourcePort;
 import pl.aiwcorpo.mcp.platform.security.BackendCredential;
 import pl.aiwcorpo.mcp.platform.security.CredentialContext;
@@ -58,8 +65,11 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     static final String SYSTEM = "confluence";
 
     static final String CONTENT = "/rest/api/content";
+    static final String SPACE = "/rest/api/space";
     static final String PAGE_EXPAND = "body.storage,space,version,ancestors";
+    static final String RECORD_EXPAND = "space,version,ancestors";
     static final String SUMMARY_EXPAND = "space,version";
+    static final String SPACE_EXPAND = "metadata.labels";
 
     /** Size limit of the page text handed to the model. */
     static final int MAX_PAGE_TEXT = 50_000;
@@ -95,33 +105,58 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @Override
-    public List<PageSummary> searchPages(String spaceKey, String text, int limit) {
+    public List<PageSummary> searchPages(String cql, int limit) {
+        return search(cql, limit, SUMMARY_EXPAND).stream().map(ContentResponse::toSummary).toList();
+    }
+
+    @Override
+    public Optional<PageRecord> findPageRecord(String pageId) {
+        return fetch(pageId, RECORD_EXPAND).map(content -> toRecord(content, labelsOf(content.spaceKey())));
+    }
+
+    /**
+     * One query for the pages of a result, then one lookup per distinct space: a search hit set is mostly one space, so
+     * its labels are read once, not per page.
+     */
+    @Override
+    public Map<String, PageRecord> findPageRecords(Collection<String> pageIds) {
+        Set<String> ids = new LinkedHashSet<>(pageIds);
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        if (!ids.stream().allMatch(ConfluenceIds::isPageId)) {
+            throw new IllegalArgumentException("not a page id");
+        }
+        List<ContentResponse> found = search(Cql.contentIn(ids), ids.size(), RECORD_EXPAND);
+        Map<String, Optional<List<String>>> labelsBySpace = new LinkedHashMap<>();
+        Map<String, PageRecord> records = new LinkedHashMap<>();
+        for (ContentResponse content : found) {
+            if (ids.contains(content.id())) {
+                records.put(content.id(), toRecord(content,
+                        labelsBySpace.computeIfAbsent(content.spaceKey(), key -> Optional.ofNullable(labelsOf(key))).orElse(null)));
+            }
+        }
+        return records;
+    }
+
+    @Override
+    public Optional<Space> findSpace(String spaceKey) {
         BackendCredential credential = credential();
         try {
-            SearchResponse response = client.get()
-                    .uri(uri -> uri.path(CONTENT + "/search")
-                            .queryParam("cql", "{cql}")
-                            .queryParam("limit", limit)
-                            .queryParam("expand", SUMMARY_EXPAND)
-                            .build(Map.of("cql", Cql.pagesInSpaceMatching(spaceKey, text))))
+            SpaceResponse response = client.get()
+                    .uri(uri -> uri.path(SPACE + "/{key}").queryParam("expand", SPACE_EXPAND).build(spaceKey))
                     .headers(credential::applyTo)
                     .retrieve()
-                    .body(SearchResponse.class);
-            if (response == null || response.results() == null) {
-                throw new BackendResponseException("empty body");
+                    .body(SpaceResponse.class);
+            if (response == null || response.key() == null || response.key().isBlank()) {
+                throw new BackendResponseException("space without key");
             }
-            return response.results().stream()
-                    .map(ContentResponse::withId)
-                    .filter(ContentResponse::isCurrentPage)
-                    .map(ContentResponse::toSummary)
-                    .toList();
+            return Optional.of(response).filter(space -> ConfluenceIds.isSpaceKey(space.key()))
+                    .map(space -> new Space(space.key(), space.name() == null ? "" : space.name(), space.labelNames()));
         } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
-            return List.of();
+            return Optional.empty();
         } catch (HttpClientErrorException.Unauthorized expired) {
             throw new CredentialRequiredException(SYSTEM);
-        } catch (HttpClientErrorException.BadRequest rejected) {
-            // Text made only of words CQL reserves; the value stays out of the message (it came from the model).
-            throw new InvalidToolArgumentException("Confluence did not accept the search words; try other words");
         } catch (RestClientResponseException | ResourceAccessException statusOrIo) {
             throw statusOrIo;
         } catch (RestClientException unreadable) {
@@ -132,11 +167,6 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     @Override
     public Optional<Page> findPage(String pageId) {
         return fetch(pageId, PAGE_EXPAND).map(ContentResponse::toPage);
-    }
-
-    @Override
-    public Optional<PageSummary> findPageSummary(String pageId) {
-        return fetch(pageId, SUMMARY_EXPAND).map(ContentResponse::toSummary);
     }
 
     @Override
@@ -170,6 +200,56 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         }
     }
 
+    /** The pages a CQL query finds; blog posts, comments and pages of personal spaces are dropped. */
+    private List<ContentResponse> search(String cql, int limit, String expand) {
+        BackendCredential credential = credential();
+        try {
+            SearchResponse response = client.get()
+                    .uri(uri -> uri.path(CONTENT + "/search")
+                            .queryParam("cql", "{cql}")
+                            .queryParam("limit", limit)
+                            .queryParam("expand", expand)
+                            .build(Map.of("cql", cql)))
+                    .headers(credential::applyTo)
+                    .retrieve()
+                    .body(SearchResponse.class);
+            if (response == null || response.results() == null) {
+                throw new BackendResponseException("empty body");
+            }
+            return response.results().stream()
+                    .map(ContentResponse::withId)
+                    .filter(ContentResponse::isCurrentPage)
+                    .filter(ContentResponse::isInGlobalSpace)
+                    .toList();
+        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
+            return List.of();
+        } catch (HttpClientErrorException.Unauthorized expired) {
+            throw new CredentialRequiredException(SYSTEM);
+        } catch (HttpClientErrorException.BadRequest rejected) {
+            // Text made only of words CQL reserves; the value stays out of the message (it came from the model).
+            throw new InvalidToolArgumentException("Confluence did not accept the search words; try other words");
+        } catch (RestClientResponseException | ResourceAccessException statusOrIo) {
+            throw statusOrIo;
+        } catch (RestClientException unreadable) {
+            throw new BackendResponseException("body not readable");
+        }
+    }
+
+    /**
+     * Labels of a space as its classification. Null (unreported) when the lookup finds nothing, the space is hidden or
+     * the list is longer than one page of Confluence's answer: a classification that may be incomplete must not read as
+     * complete, and the policy refuses a page whose labels are unknown.
+     */
+    private List<String> labelsOf(String spaceKey) {
+        return findSpace(spaceKey).map(Space::labels).orElse(null);
+    }
+
+    private static PageRecord toRecord(ContentResponse content, List<String> spaceLabels) {
+        PageSummary summary = content.toSummary();
+        return new PageRecord(summary.id(), summary.spaceKey(), summary.title(), summary.version(),
+                summary.lastUpdated(), content.ancestorIds(), spaceLabels);
+    }
+
     private Optional<ContentResponse> fetch(String pageId, String expand) {
         BackendCredential credential = credential();
         try {
@@ -181,7 +261,8 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
             if (response == null) {
                 throw new BackendResponseException("empty body");
             }
-            return Optional.of(response.withId()).filter(ContentResponse::isCurrentPage);
+            return Optional.of(response.withId()).filter(ContentResponse::isCurrentPage)
+                    .filter(ContentResponse::isInGlobalSpace);
         } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
             return Optional.empty();
         } catch (HttpClientErrorException.Unauthorized expired) {
@@ -261,27 +342,65 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
             return "page".equals(type) && (status == null || "current".equals(status));
         }
 
+        /**
+         * Personal spaces ({@code ~user}) have no key the policy can grant or narrow, so their pages are treated as not
+         * visible. A page whose reply omits the space cannot be placed anywhere and is the backend's fault.
+         */
+        boolean isInGlobalSpace() {
+            if (spaceKey() == null) {
+                throw new BackendResponseException("content without space");
+            }
+            return ConfluenceIds.isSpaceKey(spaceKey());
+        }
+
+        List<String> ancestorIds() {
+            return ancestors == null ? List.of() : ancestors.stream().map(AncestorResponse::id).filter(Objects::nonNull).toList();
+        }
+
         PageSummary toSummary() {
             return new PageSummary(id, spaceKey(), title, version == null ? 0 : version.number(),
                     version == null ? null : version.when());
         }
 
         Page toPage() {
-            List<String> ancestorIds = ancestors == null ? List.of()
-                    : ancestors.stream().map(AncestorResponse::id).filter(Objects::nonNull).toList();
             String storage = body == null || body.storage() == null ? "" : body.storage().value();
             return new Page(id, spaceKey(), title, version == null ? 0 : version.number(),
-                    version == null ? null : version.when(), ancestorIds,
+                    version == null ? null : version.when(), ancestorIds(),
                     StorageFormat.toText(storage, MAX_PAGE_TEXT));
         }
 
-        private String spaceKey() {
+        String spaceKey() {
             return space == null ? null : space.key();
         }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record SpaceResponse(String key) {
+    record SpaceResponse(String key, String name, SpaceMetadataResponse metadata) {
+
+        /** Label names, or null when the reply has no label list or says there are more than it lists. */
+        List<String> labelNames() {
+            if (metadata == null || metadata.labels() == null || metadata.labels().results() == null
+                    || (metadata.labels()._links() != null && metadata.labels()._links().next() != null)) {
+                return null;
+            }
+            return metadata.labels().results().stream().map(LabelResponse::name).filter(Objects::nonNull).toList();
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SpaceMetadataResponse(LabelsResponse labels) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record LabelsResponse(List<LabelResponse> results, LinksResponse _links) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record LabelResponse(String name) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record LinksResponse(String next) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

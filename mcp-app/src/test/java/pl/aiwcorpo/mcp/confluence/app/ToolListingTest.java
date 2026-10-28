@@ -11,19 +11,20 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import pl.aiwcorpo.mcp.confluence.core.domain.ConfluenceIds;
 
-/** The public surface: exactly three tools, risk hints, closed input schemas with limits. */
+/** The public surface: exactly four tools, risk hints, closed input schemas with limits. */
 class ToolListingTest extends ServerTestSupport {
 
     @Test
     @SuppressWarnings("unchecked")
-    void listsTheThreeToolsWithClosedSchemasAndLimits() {
+    void listsTheFourToolsWithClosedSchemasAndLimits() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             Map<String, McpSchema.Tool> tools = client.listTools().tools().stream()
                     .collect(Collectors.toMap(McpSchema.Tool::name, Function.identity()));
 
-            assertThat(tools).containsOnlyKeys("search_pages", "get_page", "create_page");
+            assertThat(tools).containsOnlyKeys("search_pages", "get_page", "get_space", "create_page");
             assertThat(tools.get("search_pages").annotations().readOnlyHint()).isTrue();
             assertThat(tools.get("get_page").annotations().readOnlyHint()).isTrue();
+            assertThat(tools.get("get_space").annotations().readOnlyHint()).isTrue();
             tools.values().forEach(tool -> {
                 assertThat(tool.inputSchema().get("additionalProperties")).as(tool.name()).isEqualTo(false);
                 assertThat(tool.description()).doesNotContainIgnoringCase("always").doesNotContainIgnoringCase("must");
@@ -32,6 +33,7 @@ class ToolListingTest extends ServerTestSupport {
             assertProperty(tools.get("search_pages"), "space", 255, ConfluenceIds.SPACE_KEY);
             assertProperty(tools.get("search_pages"), "text", 200, null);
             assertProperty(tools.get("get_page"), "pageId", 19, ConfluenceIds.PAGE_ID);
+            assertProperty(tools.get("get_space"), "space", 255, ConfluenceIds.SPACE_KEY);
             assertProperty(tools.get("create_page"), "space", 255, ConfluenceIds.SPACE_KEY);
             assertProperty(tools.get("create_page"), "parentId", 19, ConfluenceIds.PAGE_ID);
             assertProperty(tools.get("create_page"), "title", 255, null);
@@ -40,6 +42,7 @@ class ToolListingTest extends ServerTestSupport {
                     .containsExactlyInAnyOrder("space", "parentId", "title", "body");
             assertThat(properties(tools.get("search_pages"))).containsOnlyKeys("space", "text");
             assertThat(properties(tools.get("get_page"))).containsOnlyKeys("pageId");
+            assertThat(properties(tools.get("get_space"))).containsOnlyKeys("space");
         }
     }
 

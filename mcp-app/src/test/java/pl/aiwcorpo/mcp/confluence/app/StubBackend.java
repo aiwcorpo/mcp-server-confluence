@@ -10,6 +10,8 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,10 +33,16 @@ import tools.jackson.databind.node.ObjectNode;
  *       excerpt-include, and its {@code body.view} (sent only when asked for) has that HR content expanded;</li>
  *   <li>{@code 1002}: a blog post in ENG;</li>
  *   <li>{@code 2000}: page in HR; {@code 3000}: page in the personal space {@code ~jkowalski};</li>
+ *   <li>{@code 2002}: page in HR; {@code 4000}: page in UNCL, whose labels Confluence does not report;
+ *       {@code 4001}: page in OPS; {@code 4002}: page in OPS that the search index still lists under ENG; {@code 4003}:
+ *       page in MANY, whose label list is longer than one answer;</li>
  *   <li>{@code 1403}: 403; {@code 1500}: 500 echoing the caller's Authorization header; anything else: 404.</li>
  * </ul>
- * Search in ENG also returns the blog post and a page of HR, which real Confluence would not: the server must
- * drop them. Creating a page titled "Existing" is 400 (duplicate title), in space LOCKED 403, titled "No space in reply" is answered without the space object.
+ * Spaces ({@code /rest/api/space/{key}?expand=metadata.labels}): ENG without labels, HR labelled restricted, OPS with two
+ * ordinary labels, UNCL without a label list, MANY with a label list that continues on a next page.
+ * Search in ENG also returns the blog post, a page of HR, and pages the index lists under ENG although they moved to
+ * HR (2002) or OPS (4002), which real Confluence would not: the server must drop them. A lookup of pages by id
+ * ({@code id in (...)}) answers with where the pages are now. Creating a page titled "Existing" is 400 (duplicate title), in space LOCKED 403, titled "No space in reply" is answered without the space object.
  * Any request with {@link #EXPIRED_CREDENTIAL} is answered 401, like a revoked token.
  */
 final class StubBackend {
@@ -46,6 +54,17 @@ final class StubBackend {
 
     record Request(String method, String path, Map<String, String> query, String authorization, String body) {
     }
+
+    /** A page the stub knows; {@code storage} and {@code view} are what the expands return. */
+    private record Fixture(String id, String type, String space, String title, int version, List<String> ancestors,
+                           String storage, String view) {
+    }
+
+    private static final Map<String, Fixture> FIXTURES = fixtures();
+
+    /** Label names by space key; UNCL has no label list at all (null), the case of a classification Confluence did not report. */
+    private static final Map<String, List<String>> SPACE_LABELS = spaceLabels();
+    private static final Pattern QUOTED_ID = Pattern.compile("\"(\\d+)\"");
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
@@ -63,6 +82,7 @@ final class StubBackend {
             HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
             StubBackend backend = new StubBackend(server);
             server.createContext("/rest/api/content", backend::handle);
+            server.createContext("/rest/api/space", backend::handle);
             server.start();
             // Target of the redirects: a client that followed them would show up here with its credential.
             backend.elsewhere = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -109,6 +129,8 @@ final class StubBackend {
 
         if (EXPIRED_CREDENTIAL.equals(authorization)) {
             respond(exchange, 401, error(401, "Unauthorized"));
+        } else if (path.startsWith("/rest/api/space/")) {
+            space(exchange, path.substring("/rest/api/space/".length()));
         } else if ("POST".equals(exchange.getRequestMethod()) && "/rest/api/content".equals(path)) {
             create(exchange, JSON.readTree(body));
         } else if ("/rest/api/content/search".equals(path)) {
@@ -121,35 +143,18 @@ final class StubBackend {
     private void get(HttpExchange exchange, String id, Map<String, String> query, String authorization)
             throws IOException {
         List<String> expand = Arrays.asList(query.getOrDefault("expand", "").split(","));
+        Fixture fixture = FIXTURES.get(id);
+        if (fixture != null) {
+            respond(exchange, 200, content(fixture, expand));
+            return;
+        }
         switch (id) {
-            case "1000" -> respond(exchange, 200, content("1000", "page", "ENG", "Engineering home", 7, List.of(),
-                    "<p>Welcome to engineering.</p>", null, expand));
-            case "1001" -> respond(exchange, 200, content("1001", "page", "ENG", "Release notes", 3, List.of("1000"),
-                    """
-                    <p>Release 2.1 ships on Friday.</p>\
-                    <ac:structured-macro ac:name="include" ac:schema-version="1" ac:macro-id="a1">\
-                    <ac:parameter ac:name=""><ac:link><ri:page ri:space-key="HR" ri:content-title="Salaries" />\
-                    </ac:link></ac:parameter></ac:structured-macro>\
-                    <ac:structured-macro ac:name="excerpt-include" ac:schema-version="1">\
-                    <ac:parameter ac:name="nopanel">true</ac:parameter>\
-                    <ac:parameter ac:name=""><ac:link><ri:page ri:space-key="HR" ri:content-title="Bonuses" />\
-                    </ac:link></ac:parameter></ac:structured-macro>\
-                    <ac:structured-macro ac:name="info"><ac:rich-text-body><p>Freeze starts Thursday.</p>\
-                    </ac:rich-text-body></ac:structured-macro>""",
-                    "<p>Release 2.1 ships on Friday.</p><div class=\"conf-macro\"><p>" + HR_SECRET + "</p></div>",
-                    expand));
-            case "1002" -> respond(exchange, 200, content("1002", "blogpost", "ENG", "Team news", 1, List.of(),
-                    "<p>News</p>", null, expand));
-            case "2000" -> respond(exchange, 200, content("2000", "page", "HR", "Salaries", 2, List.of(),
-                    "<p>" + HR_SECRET + "</p>", null, expand));
-            case "3000" -> respond(exchange, 200, content("3000", "page", "~jkowalski", "My notes", 1, List.of(),
-                    "<p>private</p>", null, expand));
             case "1600" -> redirect(exchange);
             case "1601" -> respond(exchange, 200, "{\"id\":\"1601\",\"type\":\"page\",\"title\":\"" + BODY_MARKER);
             case "1602" -> respond(exchange, 200, "{\"type\":\"page\",\"status\":\"current\",\"title\":\""
                     + BODY_MARKER + "\"}");
-            case "1603" -> respond(exchange, 200, content("1603", "page", "ENG", "Huge", 1, List.of(),
-                    "<p>" + "x".repeat(200_000) + "</p>", null, expand));
+            case "1603" -> respond(exchange, 200, content(new Fixture("1603", "page", "ENG", "Huge", 1, List.of(),
+                    "<p>" + "x".repeat(200_000) + "</p>", null), expand));
             case "1604" -> {
                 exchange.sendResponseHeaders(200, -1);
                 exchange.close();
@@ -166,19 +171,37 @@ final class StubBackend {
         List<String> expand = Arrays.asList(query.getOrDefault("expand", "").split(","));
         ObjectNode response = JSON.createObjectNode();
         ArrayNode results = response.putArray("results");
-        if (cql.startsWith("space = \"REDIR\"")) {
+        if (cql.contains("\"REDIR\"")) {
             redirect(exchange);
             return;
         }
-        if (cql.startsWith("space = \"BAD\"")) {
+        if (cql.contains("\"BAD\"")) {
             respond(exchange, 400, error(400, "Could not parse cql: " + BODY_MARKER));
             return;
         }
-        if (cql.startsWith("space = \"ENG\"")) {
-            results.add(contentNode("1000", "page", "ENG", "Engineering home", 7, List.of(), null, null, expand));
-            results.add(contentNode("1001", "page", "ENG", "Release notes", 3, List.of(), null, null, expand));
-            results.add(contentNode("1002", "blogpost", "ENG", "Team news", 1, List.of(), null, null, expand));
-            results.add(contentNode("2000", "page", "HR", "Salaries", 2, List.of(), null, null, expand));
+        if (cql.startsWith("id in (")) {
+            Matcher ids = QUOTED_ID.matcher(cql);
+            while (ids.find()) {
+                if ("1500".equals(ids.group(1))) {
+                    respond(exchange, 500, "{\"statusCode\":500,\"message\":\"boom\"}");
+                    return;
+                }
+                Fixture fixture = FIXTURES.get(ids.group(1));
+                if (fixture != null && "page".equals(fixture.type())) {
+                    results.add(contentNode(fixture, expand));
+                }
+            }
+        } else if (cql.contains("space = \"ENG\"")) {
+            results.add(listed("1000", "ENG", expand));
+            results.add(listed("1001", "ENG", expand));
+            results.add(listed("1002", "ENG", expand));
+            results.add(listed("2000", "ENG", expand));
+            results.add(listed("2002", "ENG", expand));
+            results.add(listed("4002", "ENG", expand));
+        } else if (cql.contains("space = \"HR\"")) {
+            results.add(listed("2000", "HR", expand));
+        } else if (cql.contains("space = \"FAIL\"")) {
+            results.add(contentNode(new Fixture("1500", "page", "FAIL", "Failing", 1, List.of(), null, null), expand));
         }
         response.put("start", 0).put("limit", Integer.parseInt(query.getOrDefault("limit", "25")))
                 .put("size", results.size());
@@ -200,19 +223,98 @@ final class StubBackend {
             List<String> expand = "No space in reply".equals(title)
                     ? List.of("version", "ancestors", "body.storage")
                     : List.of("space", "version", "ancestors", "body.storage");
-            respond(exchange, 200, content("5001", "page", space, title, 1, List.of(parent),
-                    request.path("body").path("storage").path("value").asString(), null, expand));
+            respond(exchange, 200, content(new Fixture("5001", "page", space, title, 1, List.of(parent),
+                    request.path("body").path("storage").path("value").asString(), null), expand));
         }
     }
 
-    /** Content JSON as Confluence DC returns it: only the expanded parts in full, the rest in _expandable. */
-    private String content(String id, String type, String space, String title, int version, List<String> ancestors,
-            String storage, String view, List<String> expand) {
-        return contentNode(id, type, space, title, version, ancestors, storage, view, expand).toString();
+    /** A search hit as the index reports it: fixture {@code id}, but in {@code indexedSpace}, whatever its real space. */
+    private ObjectNode listed(String id, String indexedSpace, List<String> expand) {
+        Fixture real = FIXTURES.get(id);
+        return contentNode(new Fixture(id, real.type(), indexedSpace, real.title(), real.version(), List.of(), null, null),
+                expand);
     }
 
-    private ObjectNode contentNode(String id, String type, String space, String title, int version,
-            List<String> ancestors, String storage, String view, List<String> expand) {
+    /** The space endpoint: labels live under {@code metadata.labels} when asked for. */
+    private void space(HttpExchange exchange, String key) throws IOException {
+        List<String> expand = Arrays.asList(query(exchange.getRequestURI().getRawQuery()).getOrDefault("expand", "").split(","));
+        if (!SPACE_LABELS.containsKey(key)) {
+            respond(exchange, 404, error(404, "No space with key : " + key));
+            return;
+        }
+        List<String> labels = SPACE_LABELS.get(key);
+        ObjectNode space = JSON.createObjectNode().put("id", 98306).put("key", key).put("name", key + " space")
+                .put("type", "global").put("status", "current");
+        if (expand.contains("metadata.labels") && labels != null) {
+            ObjectNode listing = space.putObject("metadata").putObject("labels");
+            ArrayNode results = listing.putArray("results");
+            labels.forEach(label -> results.addObject().put("prefix", "global").put("name", label).put("id", "1")
+                    .put("label", label));
+            listing.put("start", 0).put("limit", 200).put("size", results.size());
+            if ("MANY".equals(key)) {
+                listing.putObject("_links").put("next", "/rest/api/space/MANY?start=200");
+            }
+        } else {
+            space.putObject("_expandable").put("metadata", "");
+        }
+        space.putObject("_links").put("webui", "/display/" + key);
+        respond(exchange, 200, space.toString());
+    }
+
+    private static Map<String, List<String>> spaceLabels() {
+        Map<String, List<String>> labels = new LinkedHashMap<>();
+        labels.put("ENG", List.of());
+        labels.put("HR", List.of("restricted"));
+        labels.put("OPS", List.of("public", "team-x"));
+        labels.put("MANY", List.of("a"));
+        labels.put("UNCL", null);
+        return labels;
+    }
+
+    private static Map<String, Fixture> fixtures() {
+        Map<String, Fixture> fixtures = new LinkedHashMap<>();
+        for (Fixture fixture : List.of(
+                new Fixture("1000", "page", "ENG", "Engineering home", 7, List.of(), "<p>Welcome to engineering.</p>", null),
+                new Fixture("1001", "page", "ENG", "Release notes", 3, List.of("1000"),
+                        """
+                        <p>Release 2.1 ships on Friday.</p>\
+                        <ac:structured-macro ac:name="include" ac:schema-version="1" ac:macro-id="a1">\
+                        <ac:parameter ac:name=""><ac:link><ri:page ri:space-key="HR" ri:content-title="Salaries" />\
+                        </ac:link></ac:parameter></ac:structured-macro>\
+                        <ac:structured-macro ac:name="excerpt-include" ac:schema-version="1">\
+                        <ac:parameter ac:name="nopanel">true</ac:parameter>\
+                        <ac:parameter ac:name=""><ac:link><ri:page ri:space-key="HR" ri:content-title="Bonuses" />\
+                        </ac:link></ac:parameter></ac:structured-macro>\
+                        <ac:structured-macro ac:name="info"><ac:rich-text-body><p>Freeze starts Thursday.</p>\
+                        </ac:rich-text-body></ac:structured-macro>""",
+                        "<p>Release 2.1 ships on Friday.</p><div class=\"conf-macro\"><p>" + HR_SECRET + "</p></div>"),
+                new Fixture("1002", "blogpost", "ENG", "Team news", 1, List.of(), "<p>News</p>", null),
+                new Fixture("2000", "page", "HR", "Salaries", 2, List.of(), "<p>" + HR_SECRET + "</p>", null),
+                new Fixture("2002", "page", "HR", "Bonus rules", 1, List.of(), "<p>" + HR_SECRET + "</p>", null),
+                new Fixture("3000", "page", "~jkowalski", "My notes", 1, List.of(), "<p>private</p>", null),
+                new Fixture("4000", "page", "UNCL", "Unlabelled", 1, List.of(), "<p>no labels known</p>", null),
+                new Fixture("4001", "page", "OPS", "Runbook", 4, List.of("4002"), "<p>Restart the job.</p>", null),
+                new Fixture("4002", "page", "OPS", "Operations home", 2, List.of(), "<p>Operations.</p>", null),
+                new Fixture("4003", "page", "MANY", "Many labels", 1, List.of(), "<p>unclear</p>", null))) {
+            fixtures.put(fixture.id(), fixture);
+        }
+        return fixtures;
+    }
+
+    /** Content JSON as Confluence DC returns it: only the expanded parts in full, the rest in _expandable. */
+    private String content(Fixture fixture, List<String> expand) {
+        return contentNode(fixture, expand).toString();
+    }
+
+    private ObjectNode contentNode(Fixture fixture, List<String> expand) {
+        String id = fixture.id();
+        String type = fixture.type();
+        String space = fixture.space();
+        String title = fixture.title();
+        int version = fixture.version();
+        List<String> ancestors = fixture.ancestors();
+        String storage = fixture.storage();
+        String view = fixture.view();
         ObjectNode content = JSON.createObjectNode()
                 .put("id", id).put("type", type).put("status", "current").put("title", title);
         ObjectNode expandable = JSON.createObjectNode();

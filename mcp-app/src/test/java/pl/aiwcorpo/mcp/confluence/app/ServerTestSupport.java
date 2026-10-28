@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.Map;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,10 +34,20 @@ abstract class ServerTestSupport {
     static final String SYSTEM = "confluence";
     static final String ENDPOINT = "/mcp";
     static final String PAT = "Bearer confluence-pat-of-jkowalski-7f3a";
+    static final String READ_GROUP = "mcp-confluence-read";
+    static final String WRITE_GROUP = "mcp-confluence-write";
+    /** Maps to the scope {@code Confluence::Space/ENG} in the sample bundle of the contracts. */
+    static final String ENG_SPACE_GROUP = "mcp-confluence-space-ENG";
+    /** Maps to the page tree {@code Confluence::Page/1000} in the sample bundle of the contracts. */
+    static final String HANDBOOK_EDITORS_GROUP = "mcp-confluence-handbook-editors";
     static final Set<String> CONTRACT_SYSTEMS = contractSystems();
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
     static final StubBackend BACKEND = StubBackend.start();
+
+    static {
+        TestPolicyBundle.publishOn(GATEWAY.main());
+    }
 
     @DynamicPropertySource
     static void environment(DynamicPropertyRegistry registry) {
@@ -54,9 +65,22 @@ abstract class ServerTestSupport {
         return "http://127.0.0.1:" + port;
     }
 
-    /** An MCP client that reaches the server the way the gateway does, with {@code credential} as C3 header. */
+    /** An MCP client of a user in the read group, reaching the server the way the gateway does, with {@code credential} as C3 header. */
     McpSyncClient clientWithCredential(String credential) {
-        return clientWithToken(user -> user.username("jkowalski"), credential);
+        return clientWithToken(ServerTestSupport::reader, credential);
+    }
+
+    /** A user who may also write: the write group, and the space ENG granted through its group. */
+    McpSyncClient writerWithCredential(String credential) {
+        return clientWithToken(ServerTestSupport::writer, credential);
+    }
+
+    static void reader(TestGateway.Token user) {
+        user.username("jkowalski").groups(List.of(READ_GROUP));
+    }
+
+    static void writer(TestGateway.Token user) {
+        user.username("jkowalski").groups(List.of(READ_GROUP, WRITE_GROUP, ENG_SPACE_GROUP));
     }
 
     /** As {@link #clientWithCredential}, with the caller's token shaped by {@code user} (claims of a link call). */
@@ -94,6 +118,12 @@ abstract class ServerTestSupport {
     static void assertRejectedArgument(McpSchema.CallToolResult result) {
         assertThat(result.isError()).isTrue();
         assertThat(text(result)).contains("\"error\":\"invalid_argument\"").doesNotContain("input validation failed");
+    }
+
+    /** The one answer for a page or space that is missing, hidden, restricted or out of the link. */
+    static void assertNotFoundOrDenied(McpSchema.CallToolResult result) {
+        assertThat(result.isError()).isTrue();
+        assertThat(text(result)).contains("\"error\":\"not_found_or_denied\"");
     }
 
     private static Set<String> contractSystems() {

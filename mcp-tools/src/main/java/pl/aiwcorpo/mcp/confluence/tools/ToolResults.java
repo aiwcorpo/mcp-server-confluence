@@ -4,6 +4,8 @@ import java.util.List;
 import org.springframework.lang.Nullable;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.Space;
+import pl.aiwcorpo.mcp.platform.resource.ResourceRef;
 import pl.aiwcorpo.mcp.platform.text.UntrustedText;
 
 /**
@@ -19,7 +21,8 @@ public final class ToolResults {
     private ToolResults() {
     }
 
-    public record PageHit(String id, UntrustedText title, int version, @Nullable String lastUpdated) {
+    /** {@code id} is a {@code @ResourceRef}: the starter drops the hits the caller's policy does not allow. */
+    public record PageHit(@ResourceRef(type = "Confluence::Page") String id, UntrustedText title, int version, @Nullable String lastUpdated) {
 
         static PageHit of(PageSummary page) {
             return new PageHit(page.id(), titleText(page.title()), page.version(), page.lastUpdated());
@@ -39,6 +42,13 @@ public final class ToolResults {
                     page.lastUpdated(), page.ancestorIds(),
                     UntrustedText.plainCut(page.body().text(), page.body().truncated()),
                     page.body().omittedMacros());
+        }
+    }
+
+    public record SpaceResult(String key, UntrustedText name) {
+
+        static SpaceResult of(Space space) {
+            return new SpaceResult(space.key(), UntrustedText.plain(space.name(), TITLE_MAX));
         }
     }
 

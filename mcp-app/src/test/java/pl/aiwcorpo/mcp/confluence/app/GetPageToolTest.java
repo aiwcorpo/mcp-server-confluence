@@ -38,14 +38,14 @@ class GetPageToolTest extends ServerTestSupport {
                     "\"text\":\"Welcome to engineering.\"")
                     .as("Confluence fields outside the result stay in the adapter")
                     .doesNotContain("_links", "_expandable", "webui", "displayName", "<p>");
-            assertThat(BACKEND.authorizations()).containsExactly(PAT);
+            assertThat(BACKEND.authorizations()).as("page, labels of its space, body: all as the user").containsOnly(PAT).hasSize(3);
         }
     }
 
     @Test
     void acceptsTheVirtualServerClaimsOfACallThroughALink() {
         try (McpSyncClient client = clientWithToken(
-                user -> user.username("jkowalski").virtualServer("team-docs", Map.of()), PAT)) {
+                user -> { reader(user); user.virtualServer("team-docs", Map.of()); }, PAT)) {
             McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1000"));
 
             assertThat(result.isError()).isFalse();
@@ -66,10 +66,9 @@ class GetPageToolTest extends ServerTestSupport {
             assertThat(tools.jackson.databind.json.JsonMapper.builder().build().readTree(text(result)).at("/body").has("omittedMacros"))
                     .as("omittedMacros sits next to body, not inside it").isFalse();
         }
-        assertThat(BACKEND.requests()).singleElement().satisfies(request -> {
-            assertThat(request.path()).isEqualTo("/rest/api/content/1001");
-            assertThat(request.query()).containsEntry("expand", "body.storage,space,version,ancestors");
-        });
+        assertThat(BACKEND.requests()).extracting(StubBackend.Request::path)
+                .containsExactly("/rest/api/content/1001", "/rest/api/space/ENG", "/rest/api/content/1001");
+        assertThat(BACKEND.requests().getLast().query()).containsEntry("expand", "body.storage,space,version,ancestors");
     }
 
     @Test

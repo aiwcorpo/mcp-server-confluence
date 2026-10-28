@@ -93,11 +93,8 @@ class StorageFormatTest {
     }
 
     @Test
-    void cqlKeepsTheSpaceAndReducesTextToWords() {
-        assertThat(Cql.pagesInSpaceMatching("ENG", "release\" OR space = \"HR\" notes*"))
-                .isEqualTo("space = \"ENG\" AND type = page AND text ~ \"release OR space HR notes\"");
-        assertThat(Cql.words("a\\b (c) [d] {e} ~f ?g :h +i -j !k &l |m ^n /o 'p' q.r"))
-                .isEqualTo("a b c d e f g h i j k l m n o 'p' q.r");
-        assertThat(Cql.quoted("a\"b\\c")).isEqualTo("\"a\\\"b\\\\c\"");
+    void pagesAreLookedUpByQuotedIds() {
+        assertThat(Cql.contentIn(java.util.List.of("1000", "1001")))
+                .isEqualTo("id in (\"1000\", \"1001\") AND type = page");
     }
 }
