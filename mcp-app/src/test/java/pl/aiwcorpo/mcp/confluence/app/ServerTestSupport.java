@@ -56,10 +56,15 @@ abstract class ServerTestSupport {
 
     /** An MCP client that reaches the server the way the gateway does, with {@code credential} as C3 header. */
     McpSyncClient clientWithCredential(String credential) {
+        return clientWithToken(user -> user.username("jkowalski"), credential);
+    }
+
+    /** As {@link #clientWithCredential}, with the caller's token shaped by {@code user} (claims of a link call). */
+    McpSyncClient clientWithToken(java.util.function.Consumer<TestGateway.Token> user, String credential) {
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(baseUrl())
                 .endpoint(ENDPOINT)
                 .openConnectionOnStartup(false)
-                .httpRequestCustomizer(GATEWAY.asGateway(user -> user.username("jkowalski"), credential))
+                .httpRequestCustomizer(GATEWAY.asGateway(user, credential))
                 .build();
         McpSyncClient client = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(20)).build();
         client.initialize();

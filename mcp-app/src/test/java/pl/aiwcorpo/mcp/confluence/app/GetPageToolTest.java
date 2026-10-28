@@ -43,6 +43,17 @@ class GetPageToolTest extends ServerTestSupport {
     }
 
     @Test
+    void acceptsTheVirtualServerClaimsOfACallThroughALink() {
+        try (McpSyncClient client = clientWithToken(
+                user -> user.username("jkowalski").virtualServer("team-docs", Map.of()), PAT)) {
+            McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1000"));
+
+            assertThat(result.isError()).isFalse();
+            assertThat(text(result)).contains("\"id\":\"1000\"");
+        }
+    }
+
+    @Test
     void contentIncludedFromOtherPagesIsNeverReturned() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1001"));
@@ -52,6 +63,8 @@ class GetPageToolTest extends ServerTestSupport {
                     .contains("Release 2.1 ships on Friday.", "Freeze starts Thursday.", "\"ancestorIds\":[\"1000\"]",
                             "\"omittedMacros\":[\"include\",\"excerpt-include\"]", "[macro omitted: include]")
                     .doesNotContain(StubBackend.HR_SECRET, "Salaries", "Bonuses", "\"HR\"");
+            assertThat(tools.jackson.databind.json.JsonMapper.builder().build().readTree(text(result)).at("/body").has("omittedMacros"))
+                    .as("omittedMacros sits next to body, not inside it").isFalse();
         }
         assertThat(BACKEND.requests()).singleElement().satisfies(request -> {
             assertThat(request.path()).isEqualTo("/rest/api/content/1001");

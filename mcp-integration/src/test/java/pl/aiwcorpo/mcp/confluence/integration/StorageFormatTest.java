@@ -58,9 +58,24 @@ class StorageFormatTest {
 
     @Test
     void longTextIsTruncated() {
-        PageText text = StorageFormat.toText("<p>" + "x".repeat(200) + "</p>", 50);
+        PageText text = StorageFormat.toText("<p>" + "x".repeat(200) + "</p>", 100);
 
-        assertThat(text.text()).hasSize(50);
+        assertThat(text.text()).hasSize(100);
+        assertThat(text.truncated()).isTrue();
+    }
+
+    @Test
+    void entitiesAreDecodedAndInvisibleCharactersBecomeASpaceBeforeTheCut() {
+        PageText text = StorageFormat.toText("<p>a&#8203;b&#x200B;c d</p>", 1000);
+
+        assertThat(text.text()).isEqualTo("a b c d");
+    }
+
+    @Test
+    void theCutDoesNotLeaveAHalfWrittenWord() {
+        PageText text = StorageFormat.toText("<p>hello @allison</p>", 10);
+
+        assertThat(text.text()).isEqualTo("hello");
         assertThat(text.truncated()).isTrue();
     }
 

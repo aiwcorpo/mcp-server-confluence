@@ -1,8 +1,30 @@
 # STATUS - mcp-server-confluence (ws-04)
 
-M1: osiągnięty (2026-10-27, runda 2 na starterze 3.0.0-alpha-6) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE), PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, limity w `inputSchema` i walidacja argumentów po stronie startera (C10 `invalid_argument` + C8), https poza `dev`, limit rozmiaru odpowiedzi, tytuły i treść jako `untrusted-data` (CC-072), 46 testów na stubie Confluence DC.
+M1: osiągnięty (2026-10-27; od 2026-10-28 na starterze 3.0.0-alpha-10) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE), PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, limity w `inputSchema` i walidacja argumentów po stronie startera (C10 `invalid_argument` + C8), https poza `dev`, limit rozmiaru odpowiedzi, tytuły i treść jako `untrusted-data` (CC-072), 46 testów na stubie Confluence DC.
 
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni). M2 nie jest zaczęty.
+
+## Runda 3: starter alpha-10 (2026-10-28)
+
+Z alpha-6 na 3.0.0-alpha-10 (kontrakty 2.1.1). `./mvnw clean verify`: 49 testów, 0 błędów (ConfluenceServiceTest 3,
+StorageFormatTest 8, mcp-app 38). Uruchomienie lokalne wg README (port 18510, `dev`): health 200, `POST /mcp`
+bez JWT 401, proces zatrzymany.
+
+- `UntrustedText` ze startera zamiast własnego rekordu; `omittedMacros` przeniesione z wnętrza `body` na poziom
+  wyniku `get_page` (obok `body`). `lastUpdated` jest `@Nullable` (adapter dopuszcza stronę bez wersji), bez adnotacji
+  Jacksona. Tytuły: `UntrustedText.plain(title, 255)`.
+- Kolejność dla treści strony (`StorageFormat.toText`): konwersja storage -> tekst (jsoup dekoduje encje, makra,
+  obrazy i cele linków wypadają jako elementy), `TextHygiene.normalize`, `UntrustedText.cut`, `plainCut`. Filtr serwera
+  jest strukturalny i działa na drzewie XML przed tekstem, więc znak niewidoczny w tekście nie ukrywa makra; po
+  cięciu nie ma co filtrować. Testy: `entitiesAreDecodedAndInvisibleCharactersBecomeASpaceBeforeTheCut`,
+  `theCutDoesNotLeaveAHalfWrittenWord`.
+- Limity: wszystkie argumenty już miały `@ArgumentLimits`; wzorzec `NON_BLANK_LINE` (z lookaheadem, bez `|`) i
+  `MULTI_LINE` przechodzą kontrolę startera bez zmian. Brak map, liczb i list w argumentach.
+- `application-dev.yml`: usunięte `replay-store: memory` i `mtls.required: false`. `SPRING_PROFILES_ACTIVE=dev`
+  tylko w komendzie z README.
+- Logi: błędy domenowe na INFO; ERROR zostaje tylko `internal_error`. Brak `untrusted_text_not_normalized`.
+- Claimy `vs` i `vsc:{}` (wywołanie przez link): `GetPageToolTest.acceptsTheVirtualServerClaimsOfACallThroughALink` przechodzi.
+- Nowe `outputSchema` i opis `get_page` zmieniają `definitionHash`: gateway oznaczy narzędzia jako `pending_approval`.
 
 ## Runda 2 (2026-10-27): alpha-6, poprawki template'u, recenzja M1
 
@@ -29,7 +51,7 @@ M1 według definicji koordynatora (brief ws-04 nie ma kamieni). M2 nie jest zacz
 ## Co działa
 
 - Wygenerowany z `mcp-server-template` (7f65f8f) przez `./new-server.sh confluence`; BOM
-  `pl.aiwcorpo.mcp:mcp-platform-bom:3.0.0-alpha-6` (kontrakty 2.0.2), `server-id` `mcp-confluence`, endpoint
+  `pl.aiwcorpo.mcp:mcp-platform-bom:3.0.0-alpha-10` (kontrakty 2.1.1), `server-id` `mcp-confluence`, endpoint
   `/mcp`, konfiguracja produkcyjna z template'u bez zmian (mTLS `need`, JWKS gateway'a po https z CA
   wewnętrznym, `jti` w Redisie). Obejście `defaultStatusHandler` z template'u zostało.
 - Narzędzia (rejestracja tylko w `McpToolsConfiguration`):
@@ -38,7 +60,7 @@ M1 według definicji koordynatora (brief ws-04 nie ma kamieni). M2 nie jest zacz
     do 25 wyników; serwer odrzuca też trafienia spoza przestrzeni i inne typy treści.
   - `get_page(pageId)`, `READ_ONLY`: tylko `body.storage`; makra spoza listy z treścią lokalną (`code`,
     `noformat`, `info`, `note`, `warning`, `tip`, `panel`, `expand`, `excerpt`) usuwane razem z parametrami,
-    zastępowane `[macro omitted: <nazwa>]` i wypisane w `body.omittedMacros`; wynik to zwykły tekst w
+    zastępowane `[macro omitted: <nazwa>]` i wypisane w `omittedMacros` (obok `body`); wynik to zwykły tekst w
     `body: {kind: "untrusted-data", ...}`, do 50000 znaków. Blog, komentarz, przestrzeń osobista ->
     `not_found_or_denied`.
   - `create_page(space, parentId, title, body)`, `UPDATE`: `body` jako zwykły tekst, escapowany do storage

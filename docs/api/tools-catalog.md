@@ -40,7 +40,7 @@ służy drugiej linii walidacji w kodzie). Naruszenie schematu daje `invalid_arg
 
 `get_page` zwraca treść strony w `body` z `kind: "untrusted-data"` i `format: "text/plain"`: to tekst
 użytkowników Confluence, nie polecenia. Makra spoza listy (`code`, `noformat`, `info`, `note`, `warning`, `tip`,
-`panel`, `expand`, `excerpt`) nie są rozwijane, a ich nazwy są w `body.omittedMacros`. Tytuły stron (`title` w `search_pages`, `get_page`
+`panel`, `expand`, `excerpt`) nie są rozwijane, a ich nazwy są w `omittedMacros` (obok `body`). Tytuły stron (`title` w `search_pages`, `get_page`
 i `create_page`) mają ten sam kształt, bez `omittedMacros`; `omittedMacros` jest tylko w treści. Poza
 kształtem `untrusted-data` w wynikach są wyłącznie identyfikatory sprawdzone wzorcem, klucz przestrzeni, numery
 wersji i czas ostatniej zmiany.

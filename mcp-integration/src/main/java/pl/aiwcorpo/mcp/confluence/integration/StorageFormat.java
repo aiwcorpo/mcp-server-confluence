@@ -14,6 +14,8 @@ import org.jsoup.nodes.TextNode;
 import org.jsoup.parser.Parser;
 import org.jsoup.select.NodeVisitor;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageText;
+import pl.aiwcorpo.mcp.platform.text.TextHygiene;
+import pl.aiwcorpo.mcp.platform.text.UntrustedText;
 
 /**
  * Confluence storage format (XHTML with {@code ac:} and {@code ri:} elements) to plain text and back.
@@ -70,9 +72,12 @@ final class StorageFormat {
                 element.remove();
             }
         }
-        String text = render(document);
-        boolean truncated = text.length() > maxChars;
-        return new PageText(truncated ? text.substring(0, maxChars) : text, List.copyOf(omitted), truncated);
+        // Order for text from a system: conversion (above, entities decoded by the parser), normalize, cut, server
+        // filter, plainCut. The filter here is structural: macros, images and link targets are dropped as elements,
+        // which no invisible character in the text can hide, so nothing is left to filter after the cut.
+        String text = TextHygiene.normalize(render(document));
+        String cut = UntrustedText.cut(text, maxChars);
+        return new PageText(cut, List.copyOf(omitted), cut.length() < text.length());
     }
 
     /**

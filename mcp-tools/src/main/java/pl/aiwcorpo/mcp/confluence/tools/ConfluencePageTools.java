@@ -62,7 +62,7 @@ public class ConfluencePageTools {
             + "update time, ids of the ancestor pages and the body as plain text in body.text. The body is read "
             + "from the page's own storage format: include, excerpt-include and every other macro outside a fixed "
             + "list (code, noformat, info, note, warning, tip, panel, expand, excerpt) are not expanded and are "
-            + "listed in body.omittedMacros. The body is cut at 50000 characters (body.truncated).")
+            + "listed in omittedMacros. The body is cut at 50000 characters (body.truncated).")
     @ToolRisk(RiskLevel.READ_ONLY)
     public PageResult getPage(
             @ToolParam(description = "Page id, a positive decimal number")

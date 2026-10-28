@@ -1,8 +1,8 @@
 # mcp-confluence: serwer MCP dla Confluence Data Center
 
 Serwer MCP dla systemu `confluence` (Confluence Data Center, REST API `/rest/api/content`), zbudowany na
-`mcp-platform-starter` 3.0.0-alpha-6 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
-2.0.2). Stoi wyłącznie za gateway'em platformy: przyjmuje ruch tylko po mTLS z wewnętrznym JWT gateway'a (C2),
+`mcp-platform-starter` 3.0.0-alpha-10 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
+2.1.1). Stoi wyłącznie za gateway'em platformy: przyjmuje ruch tylko po mTLS z wewnętrznym JWT gateway'a (C2),
 a do Confluence woła z osobistym tokenem dostępu (PAT) użytkownika, który gateway dołącza do każdego żądania
 (C3). Bez poprawnego JWT odpowiada 401, nie ma trybu anonimowego.
 
@@ -26,7 +26,7 @@ i `POST /rest/api/content`.
 | Narzędzie (klient widzi `confluence__<nazwa>`) | Ryzyko | Uprawnienie (C9) | Poświadczenie | Argumenty | Wynik |
 | --- | --- | --- | --- | --- | --- |
 | `search_pages` | `READ_ONLY` | `mcp-confluence-read` | `user-secret` (PAT), `Bearer` | `space` (klucz przestrzeni `^[A-Za-z0-9]{1,255}$`), `text` (1-200 znaków, jedna linia) | `{spaceKey, pages: [{id, title: {kind: "untrusted-data", format: "text/plain", text, truncated}, version, lastUpdated}]}`, do 25 stron |
-| `get_page` | `READ_ONLY` | `mcp-confluence-read` | `user-secret` (PAT), `Bearer` | `pageId` (`^[1-9][0-9]{0,18}$`) | `{id, spaceKey, title: {kind: "untrusted-data", format: "text/plain", text, truncated}, version, lastUpdated, ancestorIds, body: {kind: "untrusted-data", format: "text/plain", text, truncated, omittedMacros}}` |
+| `get_page` | `READ_ONLY` | `mcp-confluence-read` | `user-secret` (PAT), `Bearer` | `pageId` (`^[1-9][0-9]{0,18}$`) | `{id, spaceKey, title: {kind: "untrusted-data", format: "text/plain", text, truncated}, version, lastUpdated, ancestorIds, body: {kind: "untrusted-data", format: "text/plain", text, truncated}, omittedMacros}` |
 | `create_page` | `UPDATE` | `mcp-confluence-write` | `user-secret` (PAT), `Bearer` | `space`, `parentId` (strona-rodzic w tej samej przestrzeni), `title` (1-255, jedna linia), `body` (zwykły tekst, 1-20000) | `{id, spaceKey, title: {kind: "untrusted-data", format: "text/plain", text, truncated}, version}` |
 
 Błędy (C10) wspólne dla wszystkich: `credential_required` (brak poświadczenia, 401 z Confluence albo schemat inny
@@ -53,7 +53,7 @@ Szczegóły i uzasadnienia: `docs/api/tools-catalog.md`.
   adapter nigdy o nie nie prosi. W storage zostają tylko makra z treścią zapisaną na tej stronie (`code`,
   `noformat`, `info`, `note`, `warning`, `tip`, `panel`, `expand`, `excerpt`), bez parametrów; każde inne makro,
   także nieznane, jest usuwane razem z parametrami (np. odwołaniem `ri:space-key`) i zastępowane znacznikiem
-  `[macro omitted: <nazwa>]`, a nazwa trafia do `body.omittedMacros`. Wynik to zwykły tekst bez HTML, do 50000
+  `[macro omitted: <nazwa>]`, a nazwa trafia do `omittedMacros` (obok `body`). Wynik to zwykły tekst bez HTML, do 50000
   znaków. Blogi, komentarze, załączniki i strony przestrzeni osobistych (`~user`) dają `not_found_or_denied`.
 - `create_page`: `body` to zwykły tekst. Pusta linia rozdziela akapity (`<p>`), pojedynczy koniec linii to
   `<br />`, a `& < > " '` są escapowane, więc z tekstu modelu nie powstanie makro ani element HTML. Przed zapisem
