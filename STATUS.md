@@ -51,7 +51,7 @@ bez JWT 401, proces zatrzymany.
 ## Co działa
 
 - Wygenerowany z `mcp-server-template` (7f65f8f) przez `./new-server.sh confluence`; BOM
-  `pl.aiwcorpo.mcp:mcp-platform-bom:3.0.0-alpha-10` (kontrakty 2.1.1), `server-id` `mcp-confluence`, endpoint
+  `pl.aiwcorpo.mcp:mcp-platform-bom:3.0.0-alpha-11` (kontrakty 2.1.1), `server-id` `mcp-confluence`, endpoint
   `/mcp`, konfiguracja produkcyjna z template'u bez zmian (mTLS `need`, JWKS gateway'a po https z CA
   wewnętrznym, `jti` w Redisie). Obejście `defaultStatusHandler` z template'u zostało.
 - Narzędzia (rejestracja tylko w `McpToolsConfiguration`):
@@ -154,3 +154,7 @@ Kategoria (b) z recenzji M1 (zmiana kontraktu) dla tego serwera: brak poza CC-07
 | --- | --- | --- |
 | C3-L1 `create_page` bez `space` w odpowiedzi kończył się `internal_error` po utworzeniu strony | poprawione: brak `space` w odpowiedzi zastępuje zadany klucz przestrzeni (ten, z którym sprawdzono rodzica); klucz obecny w odpowiedzi nadal ma pierwszeństwo | `CreatePageToolTest.aReplyWithoutTheSpaceStillReportsTheCreatedPage` (stub: tytuł `No space in reply`) |
 | C3-L2 STATUS nieaktualny | poprawione: liczba testów (50), C-L2 zamknięte z dowodem | |
+
+## Runda 5: starter alpha-11 (2026-10-28)
+
+BOM alpha-10 -> alpha-11 (MIGRATION-3.0.md, sekcja "Zmiany w 3.0.0-alpha-11"). `DevProfileLoopbackTest` sprawdza regułę guarda przez `DevProfileGuardAssertions.assertDevProfileLoopbackRule()` (A10-M1), więc przechodzi także w kontenerze CI. `./mvnw clean verify`: 50 testów, 0 błędów; `INVOCATION_ID=ci ./mvnw -B verify`: bez różnic. Start lokalny w profilu `dev`: health 200, POST /mcp bez JWT 401.
