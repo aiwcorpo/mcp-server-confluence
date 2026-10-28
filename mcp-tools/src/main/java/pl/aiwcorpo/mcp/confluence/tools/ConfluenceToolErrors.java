@@ -16,7 +16,7 @@ public class ConfluenceToolErrors implements ToolErrorMapping {
     public Optional<SafeError> map(Throwable ex) {
         if (ex instanceof PageNotFoundException) {
             return Optional.of(new SafeError(ToolErrorCode.NOT_FOUND_OR_DENIED.code(),
-                    "The page does not exist or you have no access to it."));
+                    "The resource does not exist or you do not have access to it."));
         }
         if (ex instanceof PageRejectedException) {
             return Optional.of(new SafeError(ToolErrorCode.INVALID_ARGUMENT.code(),

@@ -1,8 +1,8 @@
 # mcp-confluence: serwer MCP dla Confluence Data Center
 
 Serwer MCP dla systemu `confluence` (Confluence Data Center, REST API `/rest/api/content`), zbudowany na
-`mcp-platform-starter` 3.0.0-alpha-14 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
-2.2.5). Stoi wyłącznie za gateway'em platformy: przyjmuje ruch tylko po mTLS z wewnętrznym JWT gateway'a (C2),
+`mcp-platform-starter` 3.0.0-beta-2 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
+3.1.0). Stoi wyłącznie za gateway'em platformy: przyjmuje ruch tylko po mTLS z wewnętrznym JWT gateway'a (C2),
 a do Confluence woła z osobistym tokenem dostępu (PAT) użytkownika, który gateway dołącza do każdego żądania
 (C3). Bez poprawnego JWT odpowiada 401, nie ma trybu anonimowego.
 
@@ -13,7 +13,7 @@ Serwer odpowiada za narzędzia, adapter do Confluence, poprawne błędy (C10) i 
 
 ```bash
 export JAVA_HOME=/opt/homebrew/Cellar/openjdk@25/25.0.4.1/libexec/openjdk.jdk/Contents/Home
-./mvnw verify                 # build i 46 testów; jar: mcp-app/target/mcp-confluence.jar
+./mvnw verify                 # build i 73 testy; jar: mcp-app/target/mcp-confluence.jar
 ```
 
 Testy nie potrzebują Dockera ani `mcp-platform-dev` (tam nie ma mocka Confluence): `TestGateway` z
@@ -23,11 +23,15 @@ i `POST /rest/api/content`.
 
 ## Narzędzia
 
-| Narzędzie (klient widzi `confluence__<nazwa>`) | Ryzyko | Uprawnienie (C9) | Poświadczenie | Argumenty | Wynik |
-| --- | --- | --- | --- | --- | --- |
-| `search_pages` | `READ_ONLY` | `mcp-confluence-read` | `user-secret` (PAT), `Bearer` | `space` (klucz przestrzeni `^[A-Za-z0-9]{1,255}$`), `text` (1-200 znaków, jedna linia) | `{spaceKey, pages: [{id, title: {kind: "untrusted-data", format: "text/plain", text, truncated}, version, lastUpdated}]}`, do 25 stron |
-| `get_page` | `READ_ONLY` | `mcp-confluence-read` | `user-secret` (PAT), `Bearer` | `pageId` (`^[1-9][0-9]{0,18}$`) | `{id, spaceKey, title: {kind: "untrusted-data", format: "text/plain", text, truncated}, version, lastUpdated, ancestorIds, body: {kind: "untrusted-data", format: "text/plain", text, truncated}, omittedMacros}` |
-| `create_page` | `UPDATE` | `mcp-confluence-write` | `user-secret` (PAT), `Bearer` | `space`, `parentId` (strona-rodzic w tej samej przestrzeni), `title` (1-255, jedna linia), `body` (zwykły tekst, 1-20000) | `{id, spaceKey, title: {kind: "untrusted-data", format: "text/plain", text, truncated}, version}` |
+| Narzędzie (klient widzi `confluence__<nazwa>`) | Tytuł | Ryzyko | Akcja Cedar | Uprawnienie (grupa) | Zasób (`@ResourceRef`) | Argumenty | Wynik |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `mcp-confluence-read` | brak w argumencie; zakres z linku (`QueryScope`), trafienia filtrowane po `id` (`Confluence::Page`) | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200 znaków, jedna linia) | `{spaceKey, pages: [{id, title: untrusted-data, version, lastUpdated}]}`, do 25 stron |
+| `get_page` | Pobierz stronę | `READ_ONLY` | `read` | `mcp-confluence-read` | `pageId`: `Confluence::Page` | `pageId` (`^[1-9][0-9]{0,18}$`) | `{id, spaceKey, title, version, lastUpdated, ancestorIds, body: untrusted-data, omittedMacros}` |
+| `get_space` | Pobierz przestrzeń | `READ_ONLY` | `read` | `mcp-confluence-read` | `space`: `Confluence::Space` | `space` | `{key, name: untrusted-data}` |
+| `create_page` | Utwórz stronę | `UPDATE` | `update` | `mcp-confluence-write` oraz zakres (przestrzeń albo drzewo stron) przyznany grupą | `parentId`: `Confluence::Page` | `space` (musi być przestrzenią rodzica), `parentId`, `title` (1-255, jedna linia), `body` (zwykły tekst, 1-20000) | `{id, spaceKey, title: untrusted-data, version}` |
+
+Wszystkie używają poświadczenia `user-secret` (PAT) jako `Bearer`. `title` w tabeli to polski tytuł z `@ToolTitle`
+(część `definitionHash`).
 
 Błędy (C10) wspólne dla wszystkich: `credential_required` (brak poświadczenia, 401 z Confluence albo schemat inny
 niż `Bearer`), `not_found_or_denied` (404 i 403, ten sam tekst), `invalid_argument`, `upstream_unavailable`,
@@ -44,11 +48,17 @@ Szczegóły i uzasadnienia: `docs/api/tools-catalog.md`.
 
 ### Co serwer robi z treścią Confluence
 
-- `search_pages`: model nie pisze CQL. Serwer składa `space = "<space>" AND type = page AND text ~ "<słowa>"`;
-  z `text` zostają litery, cyfry, odstępy i `. _ '`, reszta (cudzysłowy, operatory Lucene) zamienia się w spację.
-  Wyniki spoza przestrzeni i inne typy treści (blog, komentarz) są odrzucane także po stronie serwera.
+- `search_pages`: model nie pisze CQL. Serwer składa go ze `StructuredQuery` startera: `scope.cql(...)` z polami
+  `space`, `type`, `text`, wartości zawsze w cudzysłowach i escapowane, zakres linku wirtualnego serwera dołożony
+  przez starter (`space in (...)`): `space = "ENG" AND type = "page" AND text ~ "słowa"`. Z `text` zostają litery,
+  cyfry, odstępy i `. _ '`, reszta zamienia się w spację. Przestrzeń poza linkiem daje pustą listę bez pytania
+  Confluence. Trafienia spoza przestrzeni i inne typy treści są odrzucane po stronie serwera, a każde trafienie
+  sprawdza `ResultFilter` (strona jest oceniana po przestrzeni, w której jest teraz, nie po tej z indeksu).
   Przekierowanie (3xx), odpowiedź bez treści, nieczytelna albo bez `id` to `internal_error`, nie pusty wynik.
-- `get_page`: treść pochodzi wyłącznie z `body.storage` strony. `body.view` i `body.export_view` Confluence
+- `get_page`: strona jest rozwiązywana przed narzędziem (`ConfluencePageResolver`: strona, `ancestorIds`, etykiety jej
+  przestrzeni) i oceniana przez politykę; strona w przestrzeni z etykietą `restricted`, nieistniejąca, ukryta albo
+  w przestrzeni osobistej daje to samo `not_found_or_denied`. Dopiero potem czytana jest treść, a strona przeniesiona w
+  międzyczasie do innej przestrzeni lub drzewa nie jest zwracana. Treść pochodzi wyłącznie z `body.storage` strony. `body.view` i `body.export_view` Confluence
   renderuje z rozwiniętymi makrami include i excerpt-include, czyli z treścią innych stron i przestrzeni, więc
   adapter nigdy o nie nie prosi. W storage zostają tylko makra z treścią zapisaną na tej stronie (`code`,
   `noformat`, `info`, `note`, `warning`, `tip`, `panel`, `expand`, `excerpt`), bez parametrów; każde inne makro,
@@ -56,18 +66,23 @@ Szczegóły i uzasadnienia: `docs/api/tools-catalog.md`.
   `[macro omitted: <nazwa>]`, a nazwa trafia do `omittedMacros` (obok `body`). Wynik to zwykły tekst bez HTML, do 50000
   znaków. Blogi, komentarze, załączniki i strony przestrzeni osobistych (`~user`) dają `not_found_or_denied`.
 - `create_page`: `body` to zwykły tekst. Pusta linia rozdziela akapity (`<p>`), pojedynczy koniec linii to
-  `<br />`, a `& < > " '` są escapowane, więc z tekstu modelu nie powstanie makro ani element HTML. Przed zapisem
-  serwer sprawdza, że `parentId` to widoczna strona przestrzeni `space`; inaczej `not_found_or_denied` i nic nie
-  jest tworzone.
+  `<br />`, a `& < > " '` są escapowane, więc z tekstu modelu nie powstanie makro ani element HTML. Rodzic (`parentId`)
+  jest `@ResourceRef` z akcją `update`: polityka wymaga grupy `mcp-confluence-write` i zakresu obejmującego rodzica.
+  Serwer sprawdza jeszcze, że `space` to przestrzeń tego rodzica (tak jak ją ocenia polityka); inaczej
+  `not_found_or_denied` i nic nie jest tworzone.
+- `get_space`: przestrzeń z etykietą `restricted` jest niewidoczna; etykiet w wyniku nie ma.
+- Etykiety przestrzeni (`Confluence::Space.labels`) są klasyfikacją i pochodzą z Confluence
+  (`/rest/api/space/{key}?expand=metadata.labels`). Brak listy albo lista dłuższa niż jedna odpowiedź to klasyfikacja
+  nieznana: zasób jest odrzucany (`internal_error`), nigdy traktowany jako niesklasyfikowany.
 
 ## Moduły i miejsce każdej rzeczy
 
 | Moduł | Co w nim jest |
 | --- | --- |
-| `mcp-core` | domena (`Page`, `PageSummary`, `PageText`, `NewPage`, `PageNotFoundException`, `PageRejectedException`, `ConfluenceIds` z wzorcami identyfikatorów z kontraktu), porty `ConfluenceUseCase` i `ConfluenceResourcePort` |
-| `mcp-application` | `ConfluenceService`: zakres wyszukiwania, odrzucenie przestrzeni osobistych, kontrola rodzica |
-| `mcp-integration` | `ConfluenceResourceAdapter` (REST, PAT z C3, `https` poza `dev`, timeouty, bez przekierowań, `BoundedBodyInterceptor` z limitem rozmiaru odpowiedzi, `BackendResponseException` bez treści), `Cql` (zapytanie), `StorageFormat` (storage -> tekst bez makr, tekst -> storage z escapowaniem) |
-| `mcp-tools` | `ConfluencePageTools` (trzy narzędzia), `ToolResults` (kształt wyników), `ConfluenceToolErrors` (wyjątki domeny -> C10), `@ArgumentLimits` na argumentach (wzorce przez `contractPattern`); rejestracja przez `SchemaLimitedToolCallbacks` ze startera w `McpToolsConfiguration` |
+| `mcp-core` | domena (`Page`, `PageRecord`, `Space`, `PageSummary`, `PageText`, `NewPage`, `ConfluenceResourceModel`, `PageNotFoundException`, `PageRejectedException`, `ConfluenceIds` z wzorcami identyfikatorów z kontraktu), porty `ConfluenceUseCase` i `ConfluenceResourcePort` |
+| `mcp-application` | `ConfluenceService`: filtr przestrzeni w wyszukiwaniu, porównanie strony z tym, co oceniła polityka, kontrola rodzica |
+| `mcp-integration` | `ConfluenceResourceAdapter` (REST, PAT z C3, `https` poza `dev`, timeouty, bez przekierowań, `BoundedBodyInterceptor` z limitem rozmiaru odpowiedzi, `BackendResponseException` bez treści), `ConfluencePageResolver` i `ConfluenceSpaceResolver` (`ResourceResolver`, opis zasobu w `ConfluenceResourceDescription`), `Cql` (wyszukanie stron po id dla resolvera), `StorageFormat` (storage -> tekst bez makr, tekst -> storage z escapowaniem) |
+| `mcp-tools` | `ConfluencePageTools` (cztery narzędzia), `ToolResults` (kształt wyników), `ConfluenceToolErrors` (wyjątki domeny -> C10), `@ArgumentLimits` na argumentach (wzorce przez `contractPattern`); rejestracja przez `SchemaLimitedToolCallbacks` ze startera w `McpToolsConfiguration` |
 | `mcp-app` | `McpServerApplication`, `McpToolsConfiguration` (jawna lista narzędzi), `ApplicationWiringConfiguration`, testy end-to-end |
 
 ## Jak przechodzi wywołanie
@@ -76,6 +91,7 @@ Szczegóły i uzasadnienia: `docs/api/tools-catalog.md`.
 gateway --mTLS (CN mcp-gateway) + JWT C2 (aud mcp-confluence, tool get_page) + X-MCP-Credential: Bearer <PAT>-->
   starter: InternalJwtFilter (inaczej 401) -> CredentialHeaderFilter -> AuditingToolCallback (C8)
   -> starter: walidacja argumentów względem inputSchema (inaczej C10 invalid_argument + C8)
+  -> policy: Action call (Cedar z paczki), potem ConfluencePageResolver (GET strony i przestrzeni) i Action read
   -> ConfluencePageTools.getPage: walidacja pageId (druga linia)
   -> ConfluenceService -> ConfluenceResourceAdapter: CredentialContext.require("confluence"), tylko Bearer
   -> GET {MCP_CONFLUENCE_URL}/rest/api/content/{id}?expand=body.storage,space,version,ancestors
@@ -98,11 +114,14 @@ wyłącza TLS i mTLS, trzyma `jti` w pamięci i dopuszcza klucze testowe; starte
 | `MCP_CONFLUENCE_ALLOW_PLAIN_HTTP` | `true` dopuszcza `http` poza `dev`, wyłącznie dla mocków `mcp-platform-dev` (PAT idzie wtedy otwartym tekstem; ostrzeżenie w logu) | `false` |
 | `MCP_CONFLUENCE_SSL_BUNDLE` | bundle SSL dla HTTPS Confluence, np. `mcp-internal-ca`; puste = zaufanie JDK | puste |
 | `MCP_REDIS_HOST`, `MCP_REDIS_PORT`, `MCP_REDIS_USER`, `MCP_REDIS_PASSWORD` | Redis dla jednorazowego `jti` (użytkownik ACL `mcp-confluence`, klucze `jti:mcp-confluence:*`) | `localhost`, `6379`, `mcp-confluence`, puste |
+| `MCP_POLICY_URL`, `MCP_POLICY_KEY_ID`, `MCP_POLICY_PUBLIC_KEY_FILE`, `MCP_POLICY_STATE_DIR` | podpisana paczka polityk (C7): adres `latest.json`, id klucza, klucz publiczny Ed25519 (SPKI PEM), katalog na ostatnio przyjętą rewizję (bez niego restart przyjąłby starszą paczkę); serwer nie wstaje bez pierwszej paczki | wymagane |
+| `MCP_INTERNAL_URL`, `MCP_ACCEPTED_CREDENTIAL_TYPES` | dane manifestu (`GET /mcp-manifest`): adres serwera dla gateway'a i typy poświadczeń | wymagane, `user-secret` |
 | `MCP_PORT`, `MCP_BIND` | port i adres nasłuchu | `8443`, `0.0.0.0` |
 
 Endpoint MCP to `/mcp` (gateway: `internal-url: https://mcp-confluence.internal:8443/mcp`). Bez JWT odpowiada
 tylko `/actuator/health` (i `liveness`, `readiness`), a TLS i tak wymaga certyfikatu klienta z CA wewnętrznego.
-Serwer nie wstaje bez `MCP_GATEWAY_JWKS_URI`, `MCP_CONNECT_URL`, `MCP_CONFLUENCE_URL` i plików TLS.
+Serwer nie wstaje bez `MCP_GATEWAY_JWKS_URI`, `MCP_CONNECT_URL`, `MCP_CONFLUENCE_URL`, paczki polityk i plików TLS.
+Obraz oparty o glibc (`eclipse-temurin:25-jre`, nie Alpine): `cedar-java` ładuje bibliotekę natywną.
 
 `java` w `PATH` może być starsza niż 25 (wtedy `UnsupportedClassVersionError`), dlatego poniżej zawsze
 `$JAVA_HOME/bin/java`. Limit odpowiedzi Confluence to `confluence.backend.max-response-size` (1MB); większa
@@ -111,7 +130,8 @@ odpowiedź jest ucinana w trakcie czytania, przed parsowaniem JSON i Jsoup, i da
 ## Uruchomienie lokalne bez środowiska
 
 Profil `dev` (musi być jedynym aktywnym profilem): zwykłe HTTP na 127.0.0.1, `jti` w pamięci, bez Redisa,
-certyfikatów i sekretów. Gateway'a nie ma, więc każde żądanie z JWT kończy się 503 (JWKS niedostępny); ten tryb
+certyfikatów i sekretów. Paczkę polityk bierze z repozytorium paczek (`http://127.0.0.1:18747/policies/main/latest.json`, klucz
+`../mcp-policies/keys/dev/`, uruchamiaj z katalogu repozytorium); bez niego serwer nie wstaje. Gateway'a nie ma, więc każde żądanie z JWT kończy się 503 (JWKS niedostępny); ten tryb
 służy do sprawdzenia, że serwer wstaje i odrzuca ruch bez JWT. Narzędzia sprawdzają testy (`./mvnw verify`).
 
 ```bash
@@ -172,11 +192,13 @@ hosta (`mcp-gateway/scripts/run-dev-host.sh`, JWKS na `localhost:18445`) skonfig
 | `SearchPagesToolTest` | CQL budowany przez serwer dla jednej przestrzeni (dokładny `cql`, `limit`, `expand` w żądaniu); CQL w `text` nie poszerza zapytania; blog i trafienia z innej przestrzeni odrzucone; pusta przestrzeń -> pusta lista; `credential_required` (brak, 401); zły `space`/`text` i dodatkowy argument `cql` -> `invalid_argument` bez wywołania Confluence; 400 wyszukiwarki -> `invalid_argument` bez jej tekstu; przekierowanie to błąd, nie pusty wynik; tytuły jako `untrusted-data` |
 | `GetPageToolTest` | PAT z C3 dociera do Confluence; makra include/excerpt-include nie dają treści z HR (stub oddaje rozwiniętą treść tylko w `body.view`, adapter prosi o `body.storage`); 404 = 403; blog i przestrzeń osobista -> `not_found_or_denied`; `credential_required` (brak, 401, schemat `Basic`); zły `pageId` i nieznany argument (nazwa nie trafia do logu) -> `invalid_argument` bez wywołania Confluence; nieczytelna odpowiedź, strona bez `id` albo bez treści, przekierowanie (bez podążania) i odpowiedź ponad limit -> `internal_error` bez treści w logu; PAT i treść błędu Confluence ani w wyniku, ani w logu |
 | `CreatePageToolTest` | rodzic sprawdzany przed zapisem; treść escapowana (dokładne `body.storage.value`); rodzic z innej przestrzeni, nieistniejący i zabroniony -> ten sam `not_found_or_denied` bez POST; 400 Confluence -> `invalid_argument` bez tekstu Confluence; `credential_required` (brak, 401); `UPDATE` bez `readOnlyHint`; złe argumenty |
-| `ToolListingTest` | dokładnie trzy narzędzia; `additionalProperties: false`, `minLength`/`maxLength`/`pattern` w `inputSchema`; wzorce identyfikatorów z kontraktu |
+| `ResourcePolicyTest` | strona i przestrzeń `restricted` = brak (ten sam tekst), nieznane etykiety -> `internal_error`, brak grupy -> `access_denied` bez wywołania Confluence, link zawężony do ENG ukrywa strony i przestrzenie poza nim, wyszukiwanie poza linkiem to pusta lista bez zapytania, trafienia oceniane po aktualnej przestrzeni (indeks vs. rzeczywistość), awaria resolvera usuwa trafienie, `create_page`: zakres przestrzeni albo drzewa, rodzic z innej lub zastrzeżonej przestrzeni |
+| `ManifestTest` | `GET /mcp-manifest` przechodzi reguły gateway'a, definicje równe `tools/list` (`definitionHash`), tytuły, `resourceRefs` i ryzyko |
+| `ToolListingTest` | dokładnie cztery narzędzia; `additionalProperties: false`, `minLength`/`maxLength`/`pattern` w `inputSchema`; wzorce identyfikatorów z kontraktu |
 | `ProductionConfigurationTest` | konfiguracja bazowa: `client-auth: need`; backend `http` poza `dev` odrzucony (chyba że jawnie dopuszczony); `dev` na 127.0.0.1 |
 | `DevProfileLoopbackTest` | `dev` z adresem innym niż pętla zwrotna nie wstaje |
 | `GatewayOnlyAccessTest` | bez JWT 401 (`tools/call`, `ping`, `initialize`), JWT innego serwera, innego narzędzia, wariant serwisowy, przeterminowany -> 401; bez JWT tylko health |
-| `StorageFormatTest` | storage -> tekst (makra, encje, listy, tabele, obcięcie), tekst -> storage, CQL |
+| `StorageFormatTest` | storage -> tekst (makra, encje, listy, tabele, obcięcie), tekst -> storage, zapytanie po id |
 | `ConfluenceServiceTest` | filtr przestrzeni w wyszukiwaniu, przestrzeń osobista, rodzic z innej przestrzeni (bez Springa) |
 
 ## Dokumentacja

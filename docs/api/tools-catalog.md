@@ -4,24 +4,28 @@ Narzędzia to powierzchnia publiczna serwera. Każda zmiana nazwy, opisu, schema
 `definitionHash` (C6) i wymaga ponownego zatwierdzenia w gateway'u, więc przechodzi przez code review razem z
 tą tabelą.
 
-| Narzędzie (klient widzi `confluence__<nazwa>`) | Ryzyko | Akcja (C6) | Argumenty | Zasób (C7, `resourceRefs` od M2) | Uprawnienie (C9) | Poświadczenie |
-| --- | --- | --- | --- | --- | --- | --- |
-| `search_pages` | `READ_ONLY` | `read` | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200, jedna linia, co najmniej jedna litera lub cyfra) | `space` -> `Confluence::Space` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
-| `get_page` | `READ_ONLY` | `read` | `pageId` (`^[1-9][0-9]{0,18}$`) | `pageId` -> `Confluence::Page` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
-| `create_page` | `UPDATE` | `update` | `space`, `parentId` (`^[1-9][0-9]{0,18}$`), `title` (1-255, jedna linia, nie same odstępy), `body` (1-20000, bez znaków sterujących poza tab, LF, CR) | `space` -> `Confluence::Space`, `parentId` -> `Confluence::Page` | `mcp-confluence-write` | `user-secret` (PAT), C3 `Bearer` |
+| Narzędzie (klient widzi `confluence__<nazwa>`) | Tytuł (`@ToolTitle`) | Ryzyko | Akcja (C6) | Argumenty | Zasób (C7, `resourceRefs`) | Uprawnienie (C9) | Poświadczenie |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200, jedna linia, co najmniej jedna litera lub cyfra) | brak (przestrzeń zawęża `QueryScope`); trafienia: `id` -> `Confluence::Page` (`ResultFilter`) | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
+| `get_page` | Pobierz stronę | `READ_ONLY` | `read` | `pageId` (`^[1-9][0-9]{0,18}$`) | `pageId` -> `Confluence::Page` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
+| `get_space` | Pobierz przestrzeń | `READ_ONLY` | `read` | `space` (`^[A-Za-z0-9]{1,255}$`) | `space` -> `Confluence::Space` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
+| `create_page` | Utwórz stronę | `UPDATE` | `update` | `space`, `parentId` (`^[1-9][0-9]{0,18}$`), `title` (1-255, jedna linia, nie same odstępy), `body` (1-20000, bez znaków sterujących poza tab, LF, CR) | `parentId` -> `Confluence::Page`; `space` tylko porównywana z przestrzenią rodzica | `mcp-confluence-write` + zakres z grupy | `user-secret` (PAT), C3 `Bearer` |
 
 Wszystkie argumenty są wymagane, `inputSchema` ma `additionalProperties: false` i limity
 `minLength`/`maxLength`/`pattern` (z `@ArgumentLimits`). Wzorce identyfikatorów to `ConfluenceSpaceKey` i
-`ConfluencePageId` z `mcp-contracts` 2.0.2, brane przez `contractPattern` ze startera (kopia w `ConfluenceIds`
+`ConfluencePageId` z `mcp-contracts` 3.1.0, brane przez `contractPattern` ze startera (kopia w `ConfluenceIds`
 służy drugiej linii walidacji w kodzie). Naruszenie schematu daje `invalid_argument` ze startera.
 
 ## Wywołania Confluence Data Center
 
 | Narzędzie | Żądania |
 | --- | --- |
-| `search_pages` | `GET /rest/api/content/search?cql=space = "<space>" AND type = page AND text ~ "<słowa>"&limit=25&expand=space,version` |
-| `get_page` | `GET /rest/api/content/{pageId}?expand=body.storage,space,version,ancestors` |
-| `create_page` | `GET /rest/api/content/{parentId}?expand=space,version`, potem `POST /rest/api/content` z `{type: page, title, space: {key}, ancestors: [{id: parentId}], body: {storage: {value, representation: storage}}}` |
+| `search_pages` | `GET /rest/api/content/search?cql=space = "<space>" AND type = "page" AND text ~ "<słowa>"&limit=25&expand=space,version`; zawężenie linku (`space in (...)`) przed filtrami; potem resolver trafień (niżej) |
+| resolver strony | `GET /rest/api/content/{pageId}?expand=space,version,ancestors` (jedna strona) albo `GET /rest/api/content/search?cql=id in ("..", "..") AND type = page&expand=space,version,ancestors` (trafienia), do tego `GET /rest/api/space/{key}?expand=metadata.labels` raz na przestrzeń |
+| resolver przestrzeni | `GET /rest/api/space/{key}?expand=metadata.labels` |
+| `get_page` | resolver strony, po decyzji polityki `GET /rest/api/content/{pageId}?expand=body.storage,space,version,ancestors` |
+| `get_space` | resolver przestrzeni |
+| `create_page` | resolver strony dla `parentId`, potem `POST /rest/api/content` z `{type: page, title, space: {key}, ancestors: [{id: parentId}], body: {storage: {value, representation: storage}}}` |
 
 ## Mapowanie odpowiedzi
 
@@ -35,6 +39,8 @@ służy drugiej linii walidacji w kodzie). Naruszenie schematu daje `invalid_arg
 | treść inna niż `type: page` / `status: current` | `not_found_or_denied`, w wyszukiwaniu pominięta |
 | strona w przestrzeni osobistej (`~user`) | `not_found_or_denied` |
 | rodzic z innej przestrzeni niż `space` | `not_found_or_denied`, bez `POST` |
+| przestrzeń z etykietą `restricted` (strona, przestrzeń, rodzic) | `not_found_or_denied`, w wyszukiwaniu trafienie usunięte |
+| etykiety przestrzeni nieznane (brak listy, lista dłuższa niż odpowiedź) | `internal_error`, w wyszukiwaniu trafienie usunięte |
 
 ## Treść jako dane
 

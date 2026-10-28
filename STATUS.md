@@ -2,7 +2,63 @@
 
 M1: osiągnięty (2026-10-27; od 2026-10-28 na starterze 3.0.0-alpha-10) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE), PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, limity w `inputSchema` i walidacja argumentów po stronie startera (C10 `invalid_argument` + C8), https poza `dev`, limit rozmiaru odpowiedzi, tytuły i treść jako `untrusted-data` (CC-072), 50 testów na stubie Confluence DC.
 
-M1 według definicji koordynatora (brief ws-04 nie ma kamieni). M2 nie jest zaczęty.
+M3: osiągnięty (2026-10-28) - starter 3.0.0-beta-2 (kontrakty 3.1.0): `@ToolTitle` na czterech narzędziach, `@ResourceRef` i `ResourceResolver` dla `Confluence::Page` i `Confluence::Space` (etykiety przestrzeni jako klasyfikacja, `restricted` przez etykietę, `ancestorIds`), wyszukiwanie CQL ze `StructuredQuery` i `QueryScope` (link wirtualnego serwera), `ResultFilter` na trafieniach, polityki z podpisanej paczki, `GET /mcp-manifest` zgodny z `tools/list`; 73 testy na stubie Confluence DC.
+
+M1 według definicji koordynatora (brief ws-04 nie ma kamieni).
+
+## M3 (2026-10-28): starter beta-2, polityki zasobów
+
+Kamienie: (1) alpha-14 (commit e0c4598), (2) beta-2: konfiguracja, resolvery, wyszukiwanie, testy, (3) README, katalog, obraz.
+
+| Narzędzie | Tytuł | Ryzyko | Akcja | Uprawnienie | Zasób |
+| --- | --- | --- | --- | --- | --- |
+| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `mcp-confluence-read` | `QueryScope` + `ResultFilter` po `id` trafienia |
+| `get_page` | Pobierz stronę | `READ_ONLY` | `read` | `mcp-confluence-read` | `pageId`: `Confluence::Page` |
+| `get_space` | Pobierz przestrzeń | `READ_ONLY` | `read` | `mcp-confluence-read` | `space`: `Confluence::Space` |
+| `create_page` | Utwórz stronę | `UPDATE` | `update` | `mcp-confluence-write` + zakres | `parentId`: `Confluence::Page` |
+
+Odstępstwa od briefu i decyzje:
+
+- `get_space` jest nowym narzędziem, którego nie ma w wierszu briefu ws-04. Resolver `Confluence::Space` bez narzędzia
+  z `@ResourceRef` na przestrzeń byłby martwym kodem bez testu przez MCP. Narzędzie zwraca tylko `key` i `name`. Do
+  skreślenia, jeśli koordynator woli trzy narzędzia (wtedy resolver przestrzeni zostaje do opisu rodzica strony).
+- `create_page`: `@ResourceRef` tylko na `parentId`. Przykładowe polityki kontraktów nie mają reguły `update` dla
+  `Confluence::Space` (tylko dla `Confluence::Page`), więc `@ResourceRef` na `space` z akcją `update` byłby zawsze
+  odmową. `space` jest porównywane z przestrzenią rodzica, tak jak ją oceniła polityka.
+- `search_pages`: `space` nie jest `@ResourceRef` (jak w template): przestrzeń poza linkiem to pusta lista, nie błąd,
+  który mówiłby, jakie przestrzenie istnieją. Zakres daje `QueryScope`, ocenę trafień `ResultFilter`.
+- `get_page` robi dwa odczyty strony (resolver bez treści, po decyzji polityki ten sam rekord z `body.storage`) i
+  porównuje przestrzeń oraz `ancestorIds`; strona przeniesiona w międzyczasie nie jest zwracana. Alternatywa (treść w
+  resolverze) wczytywałaby treść każdego trafienia wyszukiwania.
+- Trafienia wyszukiwania są rozwiązywane jednym zapytaniem `id in (...)` (`fetchAll`), etykiety przestrzeni raz na
+  przestrzeń. Strona z indeksu pod `ENG`, która w rzeczywistości jest w `HR`, jest oceniana po `HR`.
+- Etykiety przestrzeni: lista dłuższa niż jedna odpowiedź (`_links.next`) albo jej brak to klasyfikacja nieznana,
+  zasób odrzucony (`internal_error`); nie czytamy kolejnych stron etykiet.
+- Tekst `not_found_or_denied` z `ConfluenceToolErrors` jest teraz identyczny z tekstem startera (wcześniej różnił
+  się, więc rodzic z innej przestrzeni odróżniał się od nieistniejącego).
+- Testy: paczka kontraktów (`b2c3d4e`) nie ma reguły `call` dla grupy `mcp-confluence-write`, więc `TestPolicyBundle`
+  dokłada ją i podpisuje kluczem testowym kontraktów. `PolicyRepository.publishGenerated` nie nadało się: wygenerowana
+  paczka ma puste `entities/static.json` (`[]`) w tej wersji `mcp-platform-test`.
+- Dockerfile na `eclipse-temurin:25-jre` (glibc), `StateDirectory` w jednostce systemd i zmienne `MCP_POLICY_*`,
+  `MCP_INTERNAL_URL` w szablonie env.
+- Nie zrobione: `GET /mcp-manifest` w produkcji (bez kluczy testowych, https, state-dir) sprawdzony tylko konfiguracją
+  i `ProductionConfigurationTest`, bo nie ma paczki produkcyjnej ani kluczy.
+
+Uruchomienie lokalne (port 18780, `dev`, paczka z repozytorium na 18747): `policy_bundle_loaded`, `manifest_ready tools=4`,
+health 200, `POST /mcp` bez JWT 401; proces zatrzymany.
+
+## Propozycje CC
+
+- Przykładowe polityki (`cedar/examples/call-tool.cedar`) nie mają `permit` dla `Action::"call"` narzędzi `UPDATE`
+  serwera `mcp-confluence` (grupa `mcp-confluence-write`); `update.cedar` ma regułę dla `Confluence::Page`. Bez niej
+  `create_page` nie przejdzie bramki w żadnej paczce zbudowanej z przykładów. Dotyczy też `mcp-servicedesk-write`
+  i `mcp-opensearch-write`, jeśli te serwery mają narzędzia `UPDATE`.
+- `update.cedar` nie ma reguły `update` dla `Confluence::Space`; jeśli zapis ma być oceniany także na przestrzeni
+  (np. `create_page` z `@ResourceRef` na `space`), reguła jest potrzebna.
+- `mcp-platform-test` `PolicyRepository.publishGenerated`: `entities/static.json` wychodzi puste (`[]`), więc grupy
+  zakresów (`mcp-confluence-space-ENG`) nie istnieją w wygenerowanej paczce.
+- Etykiety przestrzeni dłuższe niż jedna odpowiedź: kontrakt nie mówi, czy klasyfikacja niepełna ma być odrzucona;
+  serwer odrzuca. Do potwierdzenia w entity-builder.md.
 
 ## Runda 3: starter alpha-10 (2026-10-28)
 
@@ -118,7 +174,7 @@ przestrzeni) zastąpi `spaceInScope`.
   Mocka Confluence nie ma, testy są na `StubBackend`. "Restricted" wymaga polityki zasobów na serwerze (M3);
   odpowiednikiem "linku spoza zakresu" w M1 są rodzic z innej przestrzeni i makra include z innej przestrzeni
   (testy wyżej).
-- Manifest C6, `@ResourceRef`, `QueryScope`, `ResultFilter`: M2/M3, nie zaczęte.
+- Manifest C6, `@ResourceRef`, `QueryScope`, `ResultFilter`: zrobione w M3 (sekcja wyżej).
 - Tekst strony: wcięcia w blokach kodu są zdejmowane przy porządkowaniu linii; tabele jako `a | b |`.
 
 ## Czego potrzebują inni
