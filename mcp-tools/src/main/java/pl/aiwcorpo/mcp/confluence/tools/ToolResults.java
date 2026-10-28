@@ -44,8 +44,13 @@ public final class ToolResults {
 
     public record CreatedPage(String id, String spaceKey, UntrustedText title, int version) {
 
-        static CreatedPage of(PageSummary page) {
-            return new CreatedPage(page.id(), page.spaceKey(), titleText(page.title()), page.version());
+        /**
+         * A reply without {@code space} must not turn a page that exists into an error: the space asked for is
+         * the one the parent was checked against, so it stands in.
+         */
+        static CreatedPage of(PageSummary page, String requestedSpaceKey) {
+            String spaceKey = page.spaceKey() == null ? requestedSpaceKey : page.spaceKey();
+            return new CreatedPage(page.id(), spaceKey, titleText(page.title()), page.version());
         }
     }
 

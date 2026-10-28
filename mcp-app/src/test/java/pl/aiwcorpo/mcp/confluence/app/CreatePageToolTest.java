@@ -51,6 +51,17 @@ class CreatePageToolTest extends ServerTestSupport {
     }
 
     @Test
+    void aReplyWithoutTheSpaceStillReportsTheCreatedPage() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "create_page", Map.of("space", "ENG", "parentId", "1000",
+                    "title", "No space in reply", "body", "text"));
+
+            assertThat(result.isError()).isFalse();
+            assertThat(text(result)).contains("\"id\":\"5001\"", "\"spaceKey\":\"ENG\"");
+        }
+    }
+
+    @Test
     void isListedAsAnUpdateNotAsReadOnly() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             McpSchema.Tool tool = client.listTools().tools().stream()

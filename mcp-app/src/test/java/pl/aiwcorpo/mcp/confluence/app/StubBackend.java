@@ -34,7 +34,7 @@ import tools.jackson.databind.node.ObjectNode;
  *   <li>{@code 1403}: 403; {@code 1500}: 500 echoing the caller's Authorization header; anything else: 404.</li>
  * </ul>
  * Search in ENG also returns the blog post and a page of HR, which real Confluence would not: the server must
- * drop them. Creating a page titled "Existing" is 400 (duplicate title), in space LOCKED 403.
+ * drop them. Creating a page titled "Existing" is 400 (duplicate title), in space LOCKED 403, titled "No space in reply" is answered without the space object.
  * Any request with {@link #EXPIRED_CREDENTIAL} is answered 401, like a revoked token.
  */
 final class StubBackend {
@@ -197,9 +197,11 @@ final class StubBackend {
                     + "with the title Existing in the space with key " + space));
         } else {
             String parent = request.path("ancestors").path(0).path("id").asString();
+            List<String> expand = "No space in reply".equals(title)
+                    ? List.of("version", "ancestors", "body.storage")
+                    : List.of("space", "version", "ancestors", "body.storage");
             respond(exchange, 200, content("5001", "page", space, title, 1, List.of(parent),
-                    request.path("body").path("storage").path("value").asString(), null,
-                    List.of("space", "version", "ancestors", "body.storage")));
+                    request.path("body").path("storage").path("value").asString(), null, expand));
         }
     }
 

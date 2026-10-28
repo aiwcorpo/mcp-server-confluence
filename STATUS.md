@@ -1,13 +1,13 @@
 # STATUS - mcp-server-confluence (ws-04)
 
-M1: osiągnięty (2026-10-27; od 2026-10-28 na starterze 3.0.0-alpha-10) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE), PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, limity w `inputSchema` i walidacja argumentów po stronie startera (C10 `invalid_argument` + C8), https poza `dev`, limit rozmiaru odpowiedzi, tytuły i treść jako `untrusted-data` (CC-072), 46 testów na stubie Confluence DC.
+M1: osiągnięty (2026-10-27; od 2026-10-28 na starterze 3.0.0-alpha-10) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE), PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, limity w `inputSchema` i walidacja argumentów po stronie startera (C10 `invalid_argument` + C8), https poza `dev`, limit rozmiaru odpowiedzi, tytuły i treść jako `untrusted-data` (CC-072), 50 testów na stubie Confluence DC.
 
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni). M2 nie jest zaczęty.
 
 ## Runda 3: starter alpha-10 (2026-10-28)
 
-Z alpha-6 na 3.0.0-alpha-10 (kontrakty 2.1.1). `./mvnw clean verify`: 49 testów, 0 błędów (ConfluenceServiceTest 3,
-StorageFormatTest 8, mcp-app 38). Uruchomienie lokalne wg README (port 18510, `dev`): health 200, `POST /mcp`
+Z alpha-6 na 3.0.0-alpha-10 (kontrakty 2.1.1). `./mvnw clean verify`: 50 testów, 0 błędów (ConfluenceServiceTest 3,
+StorageFormatTest 8, mcp-app 39). Uruchomienie lokalne wg README (port 18510, `dev`): health 200, `POST /mcp`
 bez JWT 401, proces zatrzymany.
 
 - `UntrustedText` ze startera zamiast własnego rekordu; `omittedMacros` przeniesione z wnętrza `body` na poziom
@@ -41,7 +41,7 @@ bez JWT 401, proces zatrzymany.
 | W-1 poprawki template'u nieprzeniesione | zrobione (jw.) |
 | W-4 trzy mechanizmy limitów | zamknięte: tylko `@ArgumentLimits` ze startera |
 | W-3 kształt oznaczenia treści | CC-072 przyjęte w 2.1.0; stosuję kształt (kontrakt 2.0.2 zostaje do kolejnego startera) |
-| C-L2 znaki Unicode formatujące/sterujące (bidi, zero-width, C1) w odczycie i zapisie | nie zrobione: wspólna normalizacja tekstu niezaufanego powinna być w starterze (W-5); lokalna kopia rozjechałaby się z innymi serwerami. Warunek zamknięcia: helper w starterze |
+| C-L2 znaki Unicode formatujące/sterujące (bidi, zero-width, C1) w odczycie i zapisie | zamknięte: odczyt `TextHygiene.normalize` przed `cut` w `StorageFormat.toText`, tytuły przez `UntrustedText.plain`; zapis (argumenty) pokrywa walidacja startera od alpha-7 | `StorageFormatTest.entitiesAreDecodedAndInvisibleCharactersBecomeASpaceBeforeTheCut` |
 | C-L3 elementy `ac:*` spoza makr nie filtrowane | nie zrobione: bez wycieku (treść tej samej strony); do rozważenia przy ADF w nowszym DC |
 | C-L4 tekst wyglądający jak HTML w `body.text` | zostaje; `format: text/plain` jest deklaracją, ryzyko po stronie klienta renderującego wynik jako HTML |
 | C-L5 makra z lokalną treścią poza allowlistą (`section`, `column`, `details`, `status`) tracone | nie zrobione: poszerzenie allowlisty wymaga przeglądu każdego makra pod kątem treści z innych stron (np. `details` z `detailssummary`) |
@@ -147,3 +147,10 @@ W `mcp-contracts/CONTRACT_CHANGES.md`, przyjęte w 2.1.0 (2026-10-27):
 - CC-073 (C4.1) "Whoami Confluence Data Center": `/rest/api/user/current` zamiast `/rest/api/2/myself`.
 
 Kategoria (b) z recenzji M1 (zmiana kontraktu) dla tego serwera: brak poza CC-072.
+
+## Runda 4: poprawki przeglądu alpha-10 (2026-10-28)
+
+| Znalezisko | Status | Dowód |
+| --- | --- | --- |
+| C3-L1 `create_page` bez `space` w odpowiedzi kończył się `internal_error` po utworzeniu strony | poprawione: brak `space` w odpowiedzi zastępuje zadany klucz przestrzeni (ten, z którym sprawdzono rodzica); klucz obecny w odpowiedzi nadal ma pierwszeństwo | `CreatePageToolTest.aReplyWithoutTheSpaceStillReportsTheCreatedPage` (stub: tytuł `No space in reply`) |
+| C3-L2 STATUS nieaktualny | poprawione: liczba testów (50), C-L2 zamknięte z dowodem | |

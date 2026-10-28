@@ -90,7 +90,7 @@ public class ConfluencePageTools {
                 "1-255 characters on one line");
         String pageBody = Arguments.require("body", body, 1, BODY_MAX, Arguments.MULTI_LINE,
                 "1-20000 characters without control characters other than tab and line breaks");
-        return CreatedPage.of(useCase.createPage(spaceKey, parent, pageTitle.strip(), pageBody));
+        return CreatedPage.of(useCase.createPage(spaceKey, parent, pageTitle.strip(), pageBody), spaceKey);
     }
 
     private static String validSpace(String space) {
