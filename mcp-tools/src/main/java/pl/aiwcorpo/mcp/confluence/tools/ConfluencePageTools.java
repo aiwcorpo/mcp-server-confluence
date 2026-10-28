@@ -1,6 +1,5 @@
 package pl.aiwcorpo.mcp.confluence.tools;
 
-import java.util.List;
 import java.util.Set;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -56,11 +55,11 @@ public class ConfluencePageTools {
     }
 
     /**
-     * The model names the space and the words, never a query: the server builds the CQL. The space is not a
-     * {@code @ResourceRef} on purpose, because a link that narrows the virtual server to other spaces must give an empty
-     * search, not an error that tells which spaces exist. The narrowing comes from {@link QueryScope}; the hits are
-     * filtered afterwards by their {@code @ResourceRef} component, which also removes what Confluence returns beyond the
-     * space and what the policy refuses (a space labelled restricted).
+     * The model names the space and the words, never a query: the server builds the CQL. The space is a
+     * {@code @ResourceRef}, so a missing, hidden, restricted or out-of-link space is {@code not_found_or_denied} before
+     * anything is searched. The narrowing of the link still goes into the query ({@link QueryScope}); the hits are
+     * filtered afterwards by their {@code @ResourceRef} component, which removes what Confluence returns beyond the space
+     * and pages that are now somewhere the policy refuses.
      */
     @Tool(name = "search_pages", description = "Searches the current pages of one Confluence space for the given "
             + "words. Returns the space key and up to 25 pages, each with id, title, version and last update time. "
@@ -69,20 +68,17 @@ public class ConfluencePageTools {
     @ToolTitle("Szukaj stron")
     public SearchResult searchPages(
             @ToolParam(description = "Key of the space to search, letters and digits only")
-            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey") String space,
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
+            @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
             @ToolParam(description = "Words to look for in page titles and content, at most 200 characters")
             @ArgumentLimits(minLength = 1, maxLength = SEARCH_TEXT_MAX, pattern = NON_BLANK_LINE) String text) {
-        String spaceKey = validSpace(space);
+        String spaceKey = judgedSpace(validSpace(space)).key();
         String words = Arguments.searchWords(Arguments.require("text", text, 1, SEARCH_TEXT_MAX, NON_BLANK_LINE,
                 "1-200 characters on one line"));
         if (words.codePoints().noneMatch(Character::isLetterOrDigit)) {
             throw new InvalidToolArgumentException("text must contain at least one letter or digit");
         }
         QueryScope scope = policy.queryScope(ConfluenceResourceModel.SPACE_TYPE);
-        boolean insideLink = scope.linkIds().map(link -> ConfluenceResourceModel.withinLink(link, spaceKey)).orElse(true);
-        if (!insideLink) {
-            return new SearchResult(spaceKey, List.of());
-        }
         String cql = scope.cql(Set.of("space", "type", "text"))
                 .where("space", Operator.EQUALS, spaceKey)
                 .where("type", Operator.EQUALS, "page")
@@ -117,15 +113,13 @@ public class ConfluencePageTools {
             @ToolParam(description = "Key of the space, letters and digits only")
             @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
             @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space) {
-        Space judged = ResourceContext.current().orElseThrow()
-                .fetched(ConfluenceResourceModel.SPACE_TYPE, space, Space.class).orElseThrow();
-        return SpaceResult.of(judged);
+        return SpaceResult.of(judgedSpace(space));
     }
 
     /**
-     * The policy judges the parent page with the action {@code update}: the page tree the user may write to is a grant
-     * on a space or a page. The {@code space} argument is only checked against the space of that parent, which the
-     * policy evaluated, so the write cannot land in another space than the one granted.
+     * The policy judges the space and the parent page with the action {@code update}, so the user needs a write grant
+     * on the space. The {@code space} argument is also compared with the space of the parent the policy evaluated, so the
+     * page cannot land in another space than the one granted.
      */
     @Tool(name = "create_page", description = "Creates a Confluence page in a space, under an existing parent page "
             + "of the same space. The body is plain text: blank lines separate paragraphs, line breaks are kept, "
@@ -135,7 +129,8 @@ public class ConfluencePageTools {
     @ToolTitle("Utwórz stronę")
     public CreatedPage createPage(
             @ToolParam(description = "Key of the space, letters and digits only")
-            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey") String space,
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
+            @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
             @ToolParam(description = "Id of the parent page in that space, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String parentId,
@@ -143,7 +138,7 @@ public class ConfluencePageTools {
             @ArgumentLimits(minLength = 1, maxLength = TITLE_MAX, pattern = NON_BLANK_LINE) String title,
             @ToolParam(description = "Page body as plain text, at most 20000 characters")
             @ArgumentLimits(minLength = 1, maxLength = BODY_MAX, pattern = Arguments.MULTI_LINE) String body) {
-        String spaceKey = validSpace(space);
+        String spaceKey = judgedSpace(validSpace(space)).key();
         String pageTitle = Arguments.require("title", title, 1, TITLE_MAX, NON_BLANK_LINE,
                 "1-255 characters on one line");
         String pageBody = Arguments.require("body", body, 1, BODY_MAX, Arguments.MULTI_LINE,
@@ -155,6 +150,12 @@ public class ConfluencePageTools {
     private static PageRecord judgedPage(String pageId) {
         return ResourceContext.current().orElseThrow()
                 .fetched(ConfluenceResourceModel.PAGE_TYPE, pageId, PageRecord.class).orElseThrow();
+    }
+
+    /** The space as Confluence reports it: its key is the canonical one even when the argument differs in case. */
+    private static Space judgedSpace(String space) {
+        return ResourceContext.current().orElseThrow()
+                .fetched(ConfluenceResourceModel.SPACE_TYPE, space, Space.class).orElseThrow();
     }
 
     private static String validSpace(String space) {

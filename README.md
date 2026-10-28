@@ -13,7 +13,7 @@ Serwer odpowiada za narzędzia, adapter do Confluence, poprawne błędy (C10) i 
 
 ```bash
 export JAVA_HOME=/opt/homebrew/Cellar/openjdk@25/25.0.4.1/libexec/openjdk.jdk/Contents/Home
-./mvnw verify                 # build i 72 testy; jar: mcp-app/target/mcp-confluence.jar
+./mvnw verify                 # build i 75 testów; jar: mcp-app/target/mcp-confluence.jar
 ```
 
 Testy nie potrzebują Dockera ani `mcp-platform-dev` (tam nie ma mocka Confluence): `TestGateway` z
@@ -25,10 +25,10 @@ i `POST /rest/api/content`.
 
 | Narzędzie (klient widzi `confluence__<nazwa>`) | Tytuł | Ryzyko | Akcja Cedar | Uprawnienie (grupa) | Zasób (`@ResourceRef`) | Argumenty | Wynik |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `mcp-confluence-read` | brak w argumencie; zakres z linku (`QueryScope`), trafienia filtrowane po `id` (`Confluence::Page`) | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200 znaków, jedna linia) | `{spaceKey, pages: [{id, title: untrusted-data, version, lastUpdated}]}`, do 25 stron |
+| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `mcp-confluence-read` `space`: `Confluence::Space`; zakres linku też w CQL (`QueryScope`), trafienia filtrowane po `id` (`Confluence::Page`) | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200 znaków, jedna linia) | `{spaceKey, pages: [{id, title: untrusted-data, version, lastUpdated}]}`, do 25 stron |
 | `get_page` | Pobierz stronę | `READ_ONLY` | `read` | `mcp-confluence-read` | `pageId`: `Confluence::Page` | `pageId` (`^[1-9][0-9]{0,18}$`) | `{id, spaceKey, title, version, lastUpdated, ancestorIds, body: untrusted-data, omittedMacros}` |
 | `get_space` | Pobierz przestrzeń | `READ_ONLY` | `read` | `mcp-confluence-read` | `space`: `Confluence::Space` | `space` | `{key, name: untrusted-data}` |
-| `create_page` | Utwórz stronę | `UPDATE` | `update` | `mcp-confluence-write` oraz zakres (przestrzeń albo drzewo stron) przyznany grupą | `parentId`: `Confluence::Page` | `space` (musi być przestrzenią rodzica), `parentId`, `title` (1-255, jedna linia), `body` (zwykły tekst, 1-20000) | `{id, spaceKey, title: untrusted-data, version}` |
+| `create_page` | Utwórz stronę | `UPDATE` | `update` | `mcp-confluence-write` oraz zakres (przestrzeń albo drzewo stron) przyznany grupą | `space`: `Confluence::Space`, `parentId`: `Confluence::Page` | `space` (musi być przestrzenią rodzica), `parentId`, `title` (1-255, jedna linia), `body` (zwykły tekst, 1-20000) | `{id, spaceKey, title: untrusted-data, version}` |
 
 Wszystkie używają poświadczenia `user-secret` (PAT) jako `Bearer`. `title` w tabeli to polski tytuł z `@ToolTitle`
 (część `definitionHash`).
@@ -51,8 +51,8 @@ Szczegóły i uzasadnienia: `docs/api/tools-catalog.md`.
 - `search_pages`: model nie pisze CQL. Serwer składa go ze `StructuredQuery` startera: `scope.cql(...)` z polami
   `space`, `type`, `text`, wartości zawsze w cudzysłowach i escapowane, zakres linku wirtualnego serwera dołożony
   przez starter (`space in (...)`): `space = "ENG" AND type = "page" AND text ~ "słowa"`. Z `text` zostają litery,
-  cyfry, odstępy i `. _ '`, reszta zamienia się w spację. Przestrzeń poza linkiem daje pustą listę bez pytania
-  Confluence. Trafienia spoza przestrzeni i inne typy treści są odrzucane po stronie serwera, a każde trafienie
+  cyfry, odstępy i `. _ '`, reszta zamienia się w spację. Przestrzeń jest `@ResourceRef`: poza linkiem, zastrzeżona albo nieistniejąca daje błąd przed wyszukiwaniem
+  (poza linkiem `access_denied` z bramki, reszta `not_found_or_denied`). Klucz w CQL jest kanonicznym kluczem z Confluence. Trafienia spoza przestrzeni i inne typy treści są odrzucane po stronie serwera, a każde trafienie
   sprawdza `ResultFilter` (strona jest oceniana po przestrzeni, w której jest teraz, nie po tej z indeksu).
   Przekierowanie (3xx), odpowiedź bez treści, nieczytelna albo bez `id` to `internal_error`, nie pusty wynik.
 - `get_page`: strona jest rozwiązywana przed narzędziem (`ConfluencePageResolver`: strona, `ancestorIds`, etykiety jej
@@ -66,14 +66,16 @@ Szczegóły i uzasadnienia: `docs/api/tools-catalog.md`.
   `[macro omitted: <nazwa>]`, a nazwa trafia do `omittedMacros` (obok `body`). Wynik to zwykły tekst bez HTML, do 50000
   znaków. Blogi, komentarze, załączniki i strony przestrzeni osobistych (`~user`) dają `not_found_or_denied`.
 - `create_page`: `body` to zwykły tekst. Pusta linia rozdziela akapity (`<p>`), pojedynczy koniec linii to
-  `<br />`, a `& < > " '` są escapowane, więc z tekstu modelu nie powstanie makro ani element HTML. Rodzic (`parentId`)
-  jest `@ResourceRef` z akcją `update`: polityka wymaga grupy `mcp-confluence-write` i zakresu obejmującego rodzica.
-  Serwer sprawdza jeszcze, że `space` to przestrzeń tego rodzica (tak jak ją ocenia polityka); inaczej
-  `not_found_or_denied` i nic nie jest tworzone.
+  `<br />`, a `& < > " '` są escapowane, więc z tekstu modelu nie powstanie makro ani element HTML. `space` i rodzic (`parentId`)
+  są `@ResourceRef` z akcją `update`: polityka wymaga grupy `mcp-confluence-write` i zakresu na przestrzeni (sam zakres
+  drzewa stron nie wystarcza). Serwer sprawdza jeszcze, że `space` to przestrzeń rodzica; inaczej `not_found_or_denied`
+  i nic nie jest tworzone. Po utworzeniu porównuje przestrzeń i przodków odpowiedzi z ocenionym rodzicem; rozbieżność
+  (rodzic przeniesiony między oceną a zapisem) to `internal_error` i linia `event=page_created_outside_judged_tree`.
+  Strony nie usuwa (usunięcie to zapis, o który nikt nie prosił).
 - `get_space`: przestrzeń z etykietą `restricted` jest niewidoczna; etykiet w wyniku nie ma.
 - Etykiety przestrzeni (`Confluence::Space.labels`) są klasyfikacją i pochodzą z Confluence
-  (`/rest/api/space/{key}?expand=metadata.labels`). Brak listy albo lista dłuższa niż jedna odpowiedź to klasyfikacja
-  nieznana: zasób jest odrzucany (`internal_error`), nigdy traktowany jako niesklasyfikowany.
+  (`/rest/api/space/{key}?expand=metadata.labels`). Lista jest pełna tylko gdy odpowiedź podaje `size` i `limit`, `size` zgadza się z liczbą wyników, `size < limit` i nie ma
+  `_links.next`; inaczej to klasyfikacja nieznana: zasób jest odrzucany (`internal_error`), nigdy traktowany jako niesklasyfikowany.
 
 ## Moduły i miejsce każdej rzeczy
 

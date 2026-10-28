@@ -6,10 +6,10 @@ tą tabelą.
 
 | Narzędzie (klient widzi `confluence__<nazwa>`) | Tytuł (`@ToolTitle`) | Ryzyko | Akcja (C6) | Argumenty | Zasób (C7, `resourceRefs`) | Uprawnienie (C9) | Poświadczenie |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200, jedna linia, co najmniej jedna litera lub cyfra) | brak (przestrzeń zawęża `QueryScope`); trafienia: `id` -> `Confluence::Page` (`ResultFilter`) | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
+| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200, jedna linia, co najmniej jedna litera lub cyfra) | `space` -> `Confluence::Space`; trafienia: `id` -> `Confluence::Page` (`ResultFilter`) | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
 | `get_page` | Pobierz stronę | `READ_ONLY` | `read` | `pageId` (`^[1-9][0-9]{0,18}$`) | `pageId` -> `Confluence::Page` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
 | `get_space` | Pobierz przestrzeń | `READ_ONLY` | `read` | `space` (`^[A-Za-z0-9]{1,255}$`) | `space` -> `Confluence::Space` | `mcp-confluence-read` | `user-secret` (PAT), C3 `Bearer` |
-| `create_page` | Utwórz stronę | `UPDATE` | `update` | `space`, `parentId` (`^[1-9][0-9]{0,18}$`), `title` (1-255, jedna linia, nie same odstępy), `body` (1-20000, bez znaków sterujących poza tab, LF, CR) | `parentId` -> `Confluence::Page`; `space` tylko porównywana z przestrzenią rodzica | `mcp-confluence-write` + zakres z grupy | `user-secret` (PAT), C3 `Bearer` |
+| `create_page` | Utwórz stronę | `UPDATE` | `update` | `space`, `parentId` (`^[1-9][0-9]{0,18}$`), `title` (1-255, jedna linia, nie same odstępy), `body` (1-20000, bez znaków sterujących poza tab, LF, CR) | `space` -> `Confluence::Space`, `parentId` -> `Confluence::Page` (akcja `update`) | `mcp-confluence-write` + zakres z grupy | `user-secret` (PAT), C3 `Bearer` |
 
 Wszystkie argumenty są wymagane, `inputSchema` ma `additionalProperties: false` i limity
 `minLength`/`maxLength`/`pattern` (z `@ArgumentLimits`). Wzorce identyfikatorów to `ConfluenceSpaceKey` i

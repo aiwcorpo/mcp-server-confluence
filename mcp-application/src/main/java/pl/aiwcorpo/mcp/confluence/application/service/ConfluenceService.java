@@ -29,7 +29,7 @@ public class ConfluenceService implements ConfluenceUseCase {
     @Override
     public List<PageSummary> searchPages(String spaceKey, String cql) {
         return resource.searchPages(cql, SEARCH_LIMIT).stream()
-                .filter(hit -> spaceKey.equals(hit.spaceKey()))
+                .filter(hit -> spaceKey.equalsIgnoreCase(hit.spaceKey()))
                 .limit(SEARCH_LIMIT)
                 .toList();
     }
@@ -41,20 +41,21 @@ public class ConfluenceService implements ConfluenceUseCase {
     @Override
     public Page getPage(PageRecord judged) {
         return resource.findPage(judged.id())
-                .filter(page -> judged.spaceKey().equals(page.spaceKey()) && judged.ancestorIds().equals(page.ancestorIds()))
+                .filter(page -> judged.spaceKey().equalsIgnoreCase(page.spaceKey()) && judged.ancestorIds().equals(page.ancestorIds()))
                 .orElseThrow(PageNotFoundException::new);
     }
 
     /**
      * Confluence would place the page wherever the parent lives, so a parent from another space would turn a write the
      * policy allowed for one space into a write in another. The parent is the record the policy judged, not a second
-     * lookup.
+     * lookup, and the space sent is the canonical key Confluence reported for it (the argument may differ in case).
+     * Space keys are compared ignoring case because the decisions are taken on the key Confluence reports.
      */
     @Override
     public PageSummary createPage(String spaceKey, PageRecord parent, String title, String body) {
-        if (!spaceKey.equals(parent.spaceKey())) {
+        if (!spaceKey.equalsIgnoreCase(parent.spaceKey())) {
             throw new PageNotFoundException();
         }
-        return resource.createPage(new NewPage(spaceKey, parent.id(), title, body));
+        return resource.createPage(new NewPage(parent.spaceKey(), parent.id(), parent.ancestorIds(), title, body));
     }
 }

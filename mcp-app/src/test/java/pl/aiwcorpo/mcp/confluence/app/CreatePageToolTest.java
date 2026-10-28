@@ -34,10 +34,10 @@ class CreatePageToolTest extends ServerTestSupport {
             assertThat(text(result)).contains("\"id\":\"5001\"", "\"spaceKey\":\"ENG\"", "\"title\":{\"kind\":\"untrusted-data\",\"format\":\"text/plain\",\"text\":\"Retro 2.1\",\"truncated\":false}",
                     "\"version\":1").doesNotContain("Went well", "_links");
         }
-        assertThat(BACKEND.requests()).hasSize(3).allSatisfy(request -> assertThat(request.authorization()).isEqualTo(PAT));
-        assertThat(BACKEND.requests().get(0).path()).as("the parent as the policy judges it").isEqualTo("/rest/api/content/1000");
-        assertThat(BACKEND.requests().get(1).path()).isEqualTo("/rest/api/space/ENG");
-        StubBackend.Request create = BACKEND.requests().get(2);
+        assertThat(BACKEND.requests()).hasSize(4).allSatisfy(request -> assertThat(request.authorization()).isEqualTo(PAT));
+        assertThat(BACKEND.requests().get(0).path()).as("the space as the policy judges it").isEqualTo("/rest/api/space/ENG");
+        assertThat(BACKEND.requests().get(1).path()).as("the parent as the policy judges it").isEqualTo("/rest/api/content/1000");
+        StubBackend.Request create = BACKEND.requests().get(3);
         assertThat(create.method()).isEqualTo("POST");
         JsonNode sent = JSON.readTree(create.body());
         assertThat(sent.path("type").asString()).isEqualTo("page");
@@ -58,6 +58,17 @@ class CreatePageToolTest extends ServerTestSupport {
 
             assertThat(result.isError()).isFalse();
             assertThat(text(result)).contains("\"id\":\"5001\"", "\"spaceKey\":\"ENG\"");
+        }
+    }
+
+    @Test
+    void aPageCreatedUnderAParentThatMovedIsReportedAsAnErrorNotAsSuccess() {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "create_page", Map.of("space", "ENG", "parentId", "1001",
+                    "title", "Moved parent", "body", "text"));
+
+            assertThat(result.isError()).isTrue();
+            assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain("5001");
         }
     }
 

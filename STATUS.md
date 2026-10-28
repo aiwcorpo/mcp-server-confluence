@@ -2,7 +2,7 @@
 
 M1: osiągnięty (2026-10-27; od 2026-10-28 na starterze 3.0.0-alpha-10) - `search_pages`, `get_page` (READ_ONLY) i `create_page` (UPDATE), PAT użytkownika z C3 jako Bearer, treść stron z `body.storage` bez makr include/excerpt-include, limity w `inputSchema` i walidacja argumentów po stronie startera (C10 `invalid_argument` + C8), https poza `dev`, limit rozmiaru odpowiedzi, tytuły i treść jako `untrusted-data` (CC-072), 50 testów na stubie Confluence DC.
 
-M3: osiągnięty (2026-10-28) - starter 3.0.0-beta-3 (kontrakty 3.1.0): `@ToolTitle` na czterech narzędziach, `@ResourceRef` i `ResourceResolver` dla `Confluence::Page` i `Confluence::Space` (etykiety przestrzeni jako klasyfikacja, `restricted` przez etykietę, `ancestorIds`), wyszukiwanie CQL ze `StructuredQuery` i `QueryScope` (link wirtualnego serwera), `ResultFilter` na trafieniach, polityki z podpisanej paczki, `GET /mcp-manifest` zgodny z `tools/list`; 72 testy na stubie Confluence DC.
+M3: osiągnięty (2026-10-28) - starter 3.0.0-beta-3 (kontrakty 3.1.0): `@ToolTitle` na czterech narzędziach, `@ResourceRef` i `ResourceResolver` dla `Confluence::Page` i `Confluence::Space` (etykiety przestrzeni jako klasyfikacja, `restricted` przez etykietę, `ancestorIds`), wyszukiwanie CQL ze `StructuredQuery` i `QueryScope` (link wirtualnego serwera), `ResultFilter` na trafieniach, polityki z podpisanej paczki, `GET /mcp-manifest` zgodny z `tools/list`; 75 testów na stubie Confluence DC.
 
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni).
 
@@ -22,18 +22,26 @@ Odstępstwa od briefu i decyzje:
 - `get_space` jest nowym narzędziem, którego nie ma w wierszu briefu ws-04. Resolver `Confluence::Space` bez narzędzia
   z `@ResourceRef` na przestrzeń byłby martwym kodem bez testu przez MCP. Narzędzie zwraca tylko `key` i `name`. Do
   skreślenia, jeśli koordynator woli trzy narzędzia (wtedy resolver przestrzeni zostaje do opisu rodzica strony).
-- `create_page`: `@ResourceRef` tylko na `parentId`. Przykładowe polityki kontraktów nie mają reguły `update` dla
-  `Confluence::Space` (tylko dla `Confluence::Page`), więc `@ResourceRef` na `space` z akcją `update` byłby zawsze
-  odmową. `space` jest porównywane z przestrzenią rodzica, tak jak ją oceniła polityka.
-- `search_pages`: `space` nie jest `@ResourceRef` (jak w template): przestrzeń poza linkiem to pusta lista, nie błąd,
-  który mówiłby, jakie przestrzenie istnieją. Zakres daje `QueryScope`, ocenę trafień `ResultFilter`.
+- `space` w `search_pages` i `create_page` jest `@ResourceRef(Confluence::Space)` (przegląd C-5, ws-09 ma
+  `confluence-update-space-in-scope` w paczce produkcyjnej). Skutki: zapis wymaga zakresu na przestrzeni (sam zakres
+  drzewa stron nie wystarcza), przestrzeń poza linkiem w wyszukiwaniu to `access_denied` z bramki, restricted lub
+  nieistniejąca to `not_found_or_denied`. Przykładowa paczka kontraktów nie ma tej reguły, więc `TestPolicyBundle`
+  dokłada ją razem z regułą `call` dla grupy zapisu.
 - `get_page` robi dwa odczyty strony (resolver bez treści, po decyzji polityki ten sam rekord z `body.storage`) i
   porównuje przestrzeń oraz `ancestorIds`; strona przeniesiona w międzyczasie nie jest zwracana. Alternatywa (treść w
   resolverze) wczytywałaby treść każdego trafienia wyszukiwania.
 - Trafienia wyszukiwania są rozwiązywane jednym zapytaniem `id in (...)` (`fetchAll`), etykiety przestrzeni raz na
   przestrzeń. Strona z indeksu pod `ENG`, która w rzeczywistości jest w `HR`, jest oceniana po `HR`.
-- Etykiety przestrzeni: lista dłuższa niż jedna odpowiedź (`_links.next`) albo jej brak to klasyfikacja nieznana,
-  zasób odrzucony (`internal_error`); nie czytamy kolejnych stron etykiet.
+- Etykiety przestrzeni (C-1): lista jest pełna tylko gdy odpowiedź ma `size` i `limit`, `size` = liczba wyników, `size < limit`
+  i brak `_links.next`; inaczej klasyfikacja nieznana, zasób odrzucony (`internal_error`). Kształt odpowiedzi
+  `expand=metadata.labels` na prawdziwym DC niesprawdzony (zadanie dla ws-01); osobny endpoint ze stronicowaniem nie został
+  użyty, bo nie mam potwierdzenia, że DC go ma dla przestrzeni.
+- C-2: po `POST` adapter porównuje przestrzeń i przodków utworzonej strony z ocenionym rodzicem; rozbieżność to
+  `internal_error` i `event=page_created_outside_judged_tree`. Strona zostaje (usunięcie to niezamówiony zapis). Okno
+  między oceną a zapisem pozostaje ryzykiem rezydualnym; Confluence odrzuca sam przeniesienie do innej przestrzeni.
+- C-3: klucz przestrzeni w CQL i w porównaniach to klucz kanoniczny z resolvera; porównania przestrzeni ignorują wielkość liter.
+- C-4 (przyjęte): zasób restricted i nieistniejący różnią się liczbą wywołań do Confluence, więc tylko czasem odpowiedzi;
+  użytkownik widzi te zasoby w Confluence bezpośrednio.
 - Tekst `not_found_or_denied` z `ConfluenceToolErrors` jest teraz identyczny z tekstem startera (wcześniej różnił
   się, więc rodzic z innej przestrzeni odróżniał się od nieistniejącego).
 - Testy: paczka kontraktów (`b2c3d4e`) nie ma reguły `call` dla grupy `mcp-confluence-write`, więc `TestPolicyBundle`

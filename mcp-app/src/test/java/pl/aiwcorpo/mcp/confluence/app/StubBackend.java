@@ -220,10 +220,16 @@ final class StubBackend {
                     + "with the title Existing in the space with key " + space));
         } else {
             String parent = request.path("ancestors").path(0).path("id").asString();
+            Fixture parentPage = FIXTURES.get(parent);
+            List<String> placed = new java.util.ArrayList<>(parentPage == null ? List.of() : parentPage.ancestors());
+            if ("Moved parent".equals(title)) {
+                placed = new java.util.ArrayList<>(List.of("9999"));
+            }
+            placed.add(parent);
             List<String> expand = "No space in reply".equals(title)
                     ? List.of("version", "ancestors", "body.storage")
                     : List.of("space", "version", "ancestors", "body.storage");
-            respond(exchange, 200, content(new Fixture("5001", "page", space, title, 1, List.of(parent),
+            respond(exchange, 200, content(new Fixture("5001", "page", space, title, 1, placed,
                     request.path("body").path("storage").path("value").asString(), null), expand));
         }
     }
@@ -236,7 +242,8 @@ final class StubBackend {
     }
 
     /** The space endpoint: labels live under {@code metadata.labels} when asked for. */
-    private void space(HttpExchange exchange, String key) throws IOException {
+    private void space(HttpExchange exchange, String requestedKey) throws IOException {
+        String key = requestedKey.toUpperCase(java.util.Locale.ROOT);
         List<String> expand = Arrays.asList(query(exchange.getRequestURI().getRawQuery()).getOrDefault("expand", "").split(","));
         if (!SPACE_LABELS.containsKey(key)) {
             respond(exchange, 404, error(404, "No space with key : " + key));
@@ -251,6 +258,7 @@ final class StubBackend {
             labels.forEach(label -> results.addObject().put("prefix", "global").put("name", label).put("id", "1")
                     .put("label", label));
             listing.put("start", 0).put("limit", 200).put("size", results.size());
+            listing.put("limit", "FULL".equals(key) ? 2 : 200);
             if ("MANY".equals(key)) {
                 listing.putObject("_links").put("next", "/rest/api/space/MANY?start=200");
             }
@@ -268,6 +276,10 @@ final class StubBackend {
         labels.put("OPS", List.of("public", "team-x"));
         labels.put("MANY", List.of("a"));
         labels.put("UNCL", null);
+        labels.put("FULL", List.of("a", "b"));
+        for (String ordinary : List.of("SECRET", "REDIR", "BAD", "FAIL")) {
+            labels.put(ordinary, List.of());
+        }
         return labels;
     }
 
@@ -295,6 +307,7 @@ final class StubBackend {
                 new Fixture("4000", "page", "UNCL", "Unlabelled", 1, List.of(), "<p>no labels known</p>", null),
                 new Fixture("4001", "page", "OPS", "Runbook", 4, List.of("4002"), "<p>Restart the job.</p>", null),
                 new Fixture("4002", "page", "OPS", "Operations home", 2, List.of(), "<p>Operations.</p>", null),
+                new Fixture("4004", "page", "FULL", "Full label page", 1, List.of(), "<p>full</p>", null),
                 new Fixture("4003", "page", "MANY", "Many labels", 1, List.of(), "<p>unclear</p>", null))) {
             fixtures.put(fixture.id(), fixture);
         }

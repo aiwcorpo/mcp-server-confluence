@@ -106,16 +106,19 @@ class ManifestTest extends ServerTestSupport {
         for (JsonNode tool : manifest().get("tools")) {
             String name = tool.get("name").asString();
             risks.put(name, tool.get("risk").asString());
-            if (tool.has("resourceRefs") && tool.get("resourceRefs").size() > 0) {
-                assertThat(tool.get("resourceRefs")).as(name).hasSize(1);
-                refs.put(name, tool.at("/resourceRefs/0/argument").asString() + ":" + tool.at("/resourceRefs/0/type").asString());
+            if (tool.has("resourceRefs")) {
+                List<String> declared = new ArrayList<>();
+                tool.get("resourceRefs").forEach(ref -> declared.add(ref.get("argument").asString() + ":" + ref.get("type").asString()));
+                java.util.Collections.sort(declared);
+                refs.put(name, String.join(",", declared));
             }
         }
 
         assertThat(risks).containsOnly(Map.entry("search_pages", "READ_ONLY"), Map.entry("get_page", "READ_ONLY"),
                 Map.entry("get_space", "READ_ONLY"), Map.entry("create_page", "UPDATE"));
-        assertThat(refs).containsOnly(Map.entry("get_page", "pageId:Confluence::Page"),
-                Map.entry("get_space", "space:Confluence::Space"), Map.entry("create_page", "parentId:Confluence::Page"));
+        assertThat(refs).containsOnly(Map.entry("search_pages", "space:Confluence::Space"),
+                Map.entry("get_page", "pageId:Confluence::Page"), Map.entry("get_space", "space:Confluence::Space"),
+                Map.entry("create_page", "parentId:Confluence::Page,space:Confluence::Space"));
     }
 
     @Test

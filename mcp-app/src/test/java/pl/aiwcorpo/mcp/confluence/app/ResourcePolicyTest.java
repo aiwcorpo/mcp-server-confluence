@@ -109,14 +109,15 @@ class ResourcePolicyTest extends ServerTestSupport {
     }
 
     @Test
-    void searchingOutsideTheLinkIsAnEmptyListAndDoesNotAskConfluence() {
+    void searchingOutsideTheLinkIsRefusedBeforeAnythingIsSearched() {
         try (McpSyncClient client = clientWithToken(LINK_TO_ENG, PAT)) {
-            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "OPS", "text", "runbook"));
+            McpSchema.CallToolResult missing = call(client, "search_pages", Map.of("space", "NOSUCH", "text", "runbook"));
+            McpSchema.CallToolResult outside = call(client, "search_pages", Map.of("space", "OPS", "text", "runbook"));
 
-            assertThat(result.isError()).isFalse();
-            assertThat(text(result)).contains("\"pages\":[]");
+            assertThat(text(outside)).as("the gateway-level rule on the space argument").contains("\"error\":\"access_denied\"");
+            assertThat(text(outside)).as("same answer whether the space exists or not").isEqualTo(text(missing));
         }
-        assertThat(BACKEND.requests()).isEmpty();
+        assertThat(BACKEND.authorizations()).isEmpty();
     }
 
     @Test
@@ -144,14 +145,37 @@ class ResourcePolicyTest extends ServerTestSupport {
     }
 
     @Test
-    void searchingARestrictedSpaceGivesAnEmptyListLikeAnEmptySpace() {
+    void searchingARestrictedSpaceIsNotFoundOrDeniedLikeAMissingOne() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             McpSchema.CallToolResult restricted = call(client, "search_pages", Map.of("space", "HR", "text", "salaries"));
-            McpSchema.CallToolResult empty = call(client, "search_pages", Map.of("space", "SECRET", "text", "salaries"));
+            McpSchema.CallToolResult missing = call(client, "search_pages", Map.of("space", "NOSUCH", "text", "salaries"));
 
-            assertThat(restricted.isError()).isFalse();
-            assertThat(text(restricted)).contains("\"pages\":[]").doesNotContain("Salaries", "2000");
-            assertThat(text(restricted).replace("HR", "SECRET")).isEqualTo(text(empty));
+            assertNotFoundOrDenied(restricted);
+            assertThat(text(restricted)).isEqualTo(text(missing));
+        }
+        assertThat(BACKEND.requests()).noneMatch(request -> request.path().endsWith("/search"));
+    }
+
+    @Test
+    void aSpaceKeyInOtherCaseStillFindsThePagesOfTheCanonicalSpace() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "eng", "text", "release"));
+
+            assertThat(result.isError()).isFalse();
+            assertThat(text(result)).contains("\"id\":\"1000\"");
+        }
+    }
+
+    @Test
+    void aLabelListThatFillsItsPageIsUnknownClassificationNotAnEmptyOne() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult page = call(client, "get_page", Map.of("pageId", "4004"));
+            McpSchema.CallToolResult space = call(client, "get_space", Map.of("space", "FULL"));
+
+            for (McpSchema.CallToolResult result : List.of(page, space)) {
+                assertThat(result.isError()).isTrue();
+                assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain("full");
+            }
         }
     }
 
@@ -166,21 +190,21 @@ class ResourcePolicyTest extends ServerTestSupport {
     }
 
     @Test
-    void aNewPageNeedsAWriteGrantOnTheParentsSpaceOrTree() {
-        Map<String, Object> underHandbook = Map.of("space", "ENG", "parentId", "1001", "title", "Retro", "body", "text");
-        try (McpSyncClient handbook = clientWithToken(user -> user.username("jkowalski")
-                .groups(List.of(READ_GROUP, WRITE_GROUP, HANDBOOK_EDITORS_GROUP)), PAT)) {
-            assertThat(call(handbook, "create_page", underHandbook).isError()).as("page tree 1000 covers 1001").isFalse();
-            McpSchema.CallToolResult elsewhere = call(handbook, "create_page",
-                    Map.of("space", "OPS", "parentId", "4002", "title", "Retro", "body", "text"));
-            assertThat(elsewhere.isError()).as("not granted").isTrue();
+    void aNewPageNeedsAWriteGrantOnTheSpace() {
+        Map<String, Object> inEng = Map.of("space", "ENG", "parentId", "1001", "title", "Retro", "body", "text");
+        try (McpSyncClient granted = writerWithCredential(PAT)) {
+            assertThat(call(granted, "create_page", inEng).isError()).isFalse();
+            assertThat(call(granted, "create_page",
+                    Map.of("space", "OPS", "parentId", "4002", "title", "Retro", "body", "text")).isError())
+                    .as("OPS is not granted").isTrue();
         }
         BACKEND.reset();
-        try (McpSyncClient noGrant = clientWithToken(user -> user.username("jkowalski")
+        try (McpSyncClient treeOnly = clientWithToken(user -> user.username("jkowalski")
+                .groups(List.of(READ_GROUP, WRITE_GROUP, HANDBOOK_EDITORS_GROUP)), PAT);
+             McpSyncClient noGrant = clientWithToken(user -> user.username("jkowalski")
                 .groups(List.of(READ_GROUP, WRITE_GROUP)), PAT)) {
-            McpSchema.CallToolResult result = call(noGrant, "create_page", underHandbook);
-
-            assertThat(result.isError()).isTrue();
+            assertThat(call(treeOnly, "create_page", inEng).isError()).as("a page tree grant is not a grant on the space").isTrue();
+            assertThat(call(noGrant, "create_page", inEng).isError()).isTrue();
         }
         assertThat(BACKEND.requests()).noneMatch(request -> "POST".equals(request.method()));
     }

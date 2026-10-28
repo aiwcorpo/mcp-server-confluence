@@ -29,7 +29,8 @@ class SearchPagesToolTest extends ServerTestSupport {
                     .doesNotContain("_links", "webui");
         }
         assertThat(BACKEND.requests()).allSatisfy(request -> assertThat(request.authorization()).isEqualTo(PAT));
-        assertThat(BACKEND.requests().getFirst()).satisfies(request -> {
+        assertThat(BACKEND.requests().stream().filter(r -> r.path().equals("/rest/api/content/search")).findFirst().orElseThrow())
+                .satisfies(request -> {
             assertThat(request.path()).isEqualTo("/rest/api/content/search");
             assertThat(request.query()).containsEntry("cql", "space = \"ENG\" AND type = \"page\" AND text ~ \"release notes\"")
                     .containsEntry("limit", "25").containsEntry("expand", "space,version");
@@ -44,7 +45,7 @@ class SearchPagesToolTest extends ServerTestSupport {
 
             assertThat(result.isError()).isFalse();
         }
-        assertThat(BACKEND.requests().getFirst().query().get("cql"))
+        assertThat(BACKEND.requests().stream().filter(r -> r.path().equals("/rest/api/content/search")).findFirst().orElseThrow().query().get("cql"))
                 .isEqualTo("space = \"ENG\" AND type = \"page\" AND text ~ \"x OR space HR OR text\"");
     }
 
@@ -79,12 +80,12 @@ class SearchPagesToolTest extends ServerTestSupport {
             for (String text : new String[] {"", "   ", "a\nb", "a".repeat(201)}) {
                 assertRejectedArgument(call(client, "search_pages", Map.of("space", "ENG", "text", text)));
             }
-            assertThat(text(call(client, "search_pages", Map.of("space", "ENG", "text", "*?~"))))
-                    .contains("\"error\":\"invalid_argument\"", "text must contain at least one letter or digit");
             McpSchema.CallToolResult cql = call(client, "search_pages",
                     Map.of("space", "ENG", "text", "x", "cql", "type = page"));
             assertThat(cql.isError()).isTrue();
             assertThat(BACKEND.authorizations()).isEmpty();
+            assertThat(text(call(client, "search_pages", Map.of("space", "ENG", "text", "*?~"))))
+                    .contains("\"error\":\"invalid_argument\"", "text must contain at least one letter or digit");
         }
     }
 

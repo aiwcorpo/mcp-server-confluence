@@ -17,9 +17,10 @@ import java.util.zip.GZIPOutputStream;
 import pl.aiwcorpo.mcp.platform.test.PolicyRepository;
 
 /**
- * The example bundle of the contracts plus the one rule it lacks for this server: a call permit for the write group
+ * The example bundle of the contracts plus the two rules it lacks for this server: a call permit for the write group
  * of {@code mcp-confluence} (the examples permit only the read group, so {@code create_page} could not be called in
- * tests). Everything else stays as signed in the contracts; the bundle is re-signed with their published test key,
+ * tests) and the update rule on {@code Confluence::Space} that the production bundle has
+ * ({@code confluence-update-space-in-scope}). Everything else stays as signed in the contracts; the bundle is re-signed with their published test key,
  * which exists for tests only.
  */
 final class TestPolicyBundle {
@@ -34,6 +35,14 @@ final class TestPolicyBundle {
               resource is Tool
             )
             when { resource.server == "mcp-confluence" && resource.risk == "UPDATE" };
+
+            @id("confluence-update-space-in-scope")
+            permit (
+              principal in UserGroup::"mcp-confluence-write",
+              action == Action::"update",
+              resource is Confluence::Space
+            )
+            when { principal in resource.scopes };
             """;
 
     private TestPolicyBundle() {
@@ -42,7 +51,7 @@ final class TestPolicyBundle {
     static void publishOn(PolicyRepository repository) {
         try {
             Map<String, byte[]> files = untar(gunzip(resource("bundles/files/policies-" + REVISION + ".tar.gz")));
-            files.put("policies/confluence-call-update.cedar", CALL_UPDATE.getBytes(StandardCharsets.UTF_8));
+            files.put("policies/confluence-update.cedar", CALL_UPDATE.getBytes(StandardCharsets.UTF_8));
             byte[] archive = gzip(tar(files));
             repository.publishRaw(REVISION, archive, sign(archive));
         } catch (IOException | GeneralSecurityException ex) {

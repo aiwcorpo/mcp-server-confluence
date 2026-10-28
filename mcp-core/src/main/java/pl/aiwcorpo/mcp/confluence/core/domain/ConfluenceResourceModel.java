@@ -1,7 +1,5 @@
 package pl.aiwcorpo.mcp.confluence.core.domain;
 
-import java.util.Collection;
-
 /** How this server's records map to the resource types of the policy (C7, entity-builder.md). */
 public final class ConfluenceResourceModel {
 
@@ -12,10 +10,5 @@ public final class ConfluenceResourceModel {
     public static final String SPACE_TYPE = "Confluence::Space";
 
     private ConfluenceResourceModel() {
-    }
-
-    /** Whether a search in {@code spaceKey} stays inside the spaces the link narrows to. */
-    public static boolean withinLink(Collection<String> linkSpaceKeys, String spaceKey) {
-        return linkSpaceKeys.contains(spaceKey);
     }
 }

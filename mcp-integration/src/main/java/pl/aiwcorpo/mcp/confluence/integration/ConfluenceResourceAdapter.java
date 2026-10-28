@@ -177,7 +177,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
                 new Body(new Storage(StorageFormat.fromPlainText(page.body()), "storage")));
         try {
             ContentResponse created = client.post()
-                    .uri(CONTENT)
+                    .uri(uri -> uri.path(CONTENT).queryParam("expand", RECORD_EXPAND).build())
                     .contentType(MediaType.APPLICATION_JSON)
                     .headers(credential::applyTo)
                     .body(request)
@@ -186,7 +186,9 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
             if (created == null) {
                 throw new BackendResponseException("empty body");
             }
-            return created.withId().toSummary();
+            created.withId();
+            requireInsideJudgedTree(created, page);
+            return created.toSummary();
         } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
             throw new PageNotFoundException();
         } catch (HttpClientErrorException.Unauthorized expired) {
@@ -248,6 +250,21 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         PageSummary summary = content.toSummary();
         return new PageRecord(summary.id(), summary.spaceKey(), summary.title(), summary.version(),
                 summary.lastUpdated(), content.ancestorIds(), spaceLabels);
+    }
+
+    /**
+     * The parent was judged before the write; if it moved in between, Confluence put the page under its new place. The
+     * page exists by then and is not deleted (a delete is a write the user never asked for), so the call fails with a
+     * line for the audit trail and the client is told only that the result is not usable.
+     */
+    private static void requireInsideJudgedTree(ContentResponse created, NewPage requested) {
+        List<String> expected = new java.util.ArrayList<>(requested.parentAncestorIds());
+        expected.add(requested.parentId());
+        boolean spaceMatches = created.spaceKey() == null || requested.spaceKey().equalsIgnoreCase(created.spaceKey());
+        if (!spaceMatches || !expected.equals(created.ancestorIds())) {
+            LOG.warn("event=page_created_outside_judged_tree pageId={} parentId={}", created.id(), requested.parentId());
+            throw new BackendResponseException("created page is not under the judged parent");
+        }
     }
 
     private Optional<ContentResponse> fetch(String pageId, String expand) {
@@ -380,7 +397,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         /** Label names, or null when the reply has no label list or says there are more than it lists. */
         List<String> labelNames() {
             if (metadata == null || metadata.labels() == null || metadata.labels().results() == null
-                    || (metadata.labels()._links() != null && metadata.labels()._links().next() != null)) {
+                    || !metadata.labels().isComplete()) {
                 return null;
             }
             return metadata.labels().results().stream().map(LabelResponse::name).filter(Objects::nonNull).toList();
@@ -392,7 +409,18 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record LabelsResponse(List<LabelResponse> results, LinksResponse _links) {
+    record LabelsResponse(List<LabelResponse> results, Integer size, Integer limit, LinksResponse _links) {
+
+        /**
+         * Complete only when the answer says how long it is and that it stopped before its limit. A list that fills
+         * its page ({@code size >= limit}), has no {@code size} or {@code limit}, disagrees with its own size or links on
+         * to a next page may hide the label that classifies the space, and a classification that may be incomplete is
+         * unknown, not empty.
+         */
+        boolean isComplete() {
+            return size != null && limit != null && size == results.size() && size < limit
+                    && (_links == null || _links.next() == null);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
