@@ -13,7 +13,7 @@ Serwer odpowiada za narzędzia, adapter do Confluence, poprawne błędy (C10) i 
 
 ```bash
 export JAVA_HOME=/opt/homebrew/Cellar/openjdk@25/25.0.4.1/libexec/openjdk.jdk/Contents/Home
-./mvnw verify                 # build i 73 testy; jar: mcp-app/target/mcp-confluence.jar
+./mvnw verify                 # build i 72 testy; jar: mcp-app/target/mcp-confluence.jar
 ```
 
 Testy nie potrzebują Dockera ani `mcp-platform-dev` (tam nie ma mocka Confluence): `TestGateway` z
