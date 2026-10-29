@@ -18,7 +18,8 @@ import pl.aiwcorpo.mcp.platform.test.TestGateway;
 class ResourcePolicyTest extends ServerTestSupport {
 
     private static final Consumer<TestGateway.Token> LINK_TO_ENG = user -> {
-        reader(user);
+        // A link narrows the scopes the caller already holds, so the caller holds the ENG scope group.
+        user.username("jkowalski").groups(List.of(READ_GROUP, ENG_SPACE_GROUP));
         user.virtualServer("eng-only", Map.of("confluenceSpaces", List.of("ENG")));
     };
 
@@ -80,16 +81,11 @@ class ResourcePolicyTest extends ServerTestSupport {
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled("starter beta-7 defect: it also refuses a reader with a read grant; re-enable and re-check on beta-8")
-    void aCallerWithNoSpaceOrPageScopeGetsNotFoundOrDeniedForAPageBeforeAnyLookup() {
-        try (McpSyncClient client = clientWithToken(user -> user.username("jkowalski").groups(List.of(READ_GROUP)), PAT)) {
-            McpSchema.CallToolResult existing = call(client, "get_page", Map.of("pageId", "1000"));
-            McpSchema.CallToolResult missing = call(client, "get_page", Map.of("pageId", "1404"));
-
-            assertNotFoundOrDenied(existing);
-            assertThat(text(existing)).isEqualTo(text(missing));
+    void aReaderWithNoSpaceOrPageScopeStillReadsAPageTheReadPolicyAllows() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            assertThat(call(client, "get_page", Map.of("pageId", "1000")).isError()).isFalse();
+            assertNotFoundOrDenied(call(client, "get_page", Map.of("pageId", "2000")));
         }
-        assertThat(BACKEND.requests()).as("the resolver never ran").isEmpty();
     }
 
     @Test
@@ -131,7 +127,7 @@ class ResourcePolicyTest extends ServerTestSupport {
             McpSchema.CallToolResult missing = call(client, "search_pages", Map.of("space", "NOSUCH", "text", "runbook"));
             McpSchema.CallToolResult outside = call(client, "search_pages", Map.of("space", "OPS", "text", "runbook"));
 
-            assertThat(text(outside)).as("the gateway-level rule on the space argument").contains("\"error\":\"access_denied\"");
+            assertThat(text(outside)).as("a space outside the link is refused like a missing one").contains("\"error\":\"not_found_or_denied\"");
             assertThat(text(outside)).as("same answer whether the space exists or not").isEqualTo(text(missing));
         }
         assertThat(BACKEND.authorizations()).isEmpty();

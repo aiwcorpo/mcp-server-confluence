@@ -4,7 +4,7 @@ M1: osiągnięty (2026-10-27; od 2026-10-28 na starterze 3.0.0-alpha-10) - `sear
 
 M3: osiągnięty (2026-10-28) - starter 3.0.0-beta-4 (kontrakty 3.1.0): `@ToolTitle` na czterech narzędziach, `@ResourceRef` i `ResourceResolver` dla `Confluence::Page` i `Confluence::Space` (etykiety przestrzeni jako klasyfikacja, `restricted` przez etykietę, `ancestorIds`), wyszukiwanie CQL ze `StructuredQuery` i `QueryScope` (link wirtualnego serwera), `ResultFilter` na trafieniach, polityki z podpisanej paczki, `GET /mcp-manifest` zgodny z `tools/list`; 75 testów na stubie Confluence DC.
 
-M4: w toku (2026-10-29) - starter 3.0.0-beta-7 (kontrakty 4.1.0), CQL ze `StructuredQuery` z pól normatywnych, stały tekst `not_found_or_denied`, typ `user-secret` jako jedyny i domyślny, manifest jako artefakt budowy (`mcp-app/target/mcp-manifest.json`), 79 testów (1 wyłączony do beta-8).
+M4: osiągnięty (2026-10-29) - starter 3.0.0-beta-8 (kontrakty 4.1.0), CQL ze `StructuredQuery` z pól normatywnych, stały tekst `not_found_or_denied`, typ `user-secret` jako jedyny i domyślny, manifest jako artefakt budowy (`mcp-app/target/mcp-manifest.json`), 79 testów.
 
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni).
 
@@ -225,19 +225,16 @@ Kategoria (b) z recenzji M1 (zmiana kontraktu) dla tego serwera: brak poza CC-07
 
 BOM alpha-10 -> alpha-11 (MIGRATION-3.0.md, sekcja "Zmiany w 3.0.0-alpha-11"). `DevProfileLoopbackTest` sprawdza regułę guarda przez `DevProfileGuardAssertions.assertDevProfileLoopbackRule()` (A10-M1), więc przechodzi także w kontenerze CI. `./mvnw clean verify`: 50 testów, 0 błędów; `INVOCATION_ID=ci ./mvnw -B verify`: bez różnic. Start lokalny w profilu `dev`: health 200, POST /mcp bez JWT 401.
 
-## M4 (2026-10-29): beta-7
+## M4 (2026-10-29): beta-8
 
-Kamienie: (1) beta-7: wersja, StructuredQuery, stała odmowa, typ poświadczenia, manifest-artefakt, testy (commit tego wpisu),
-(2) beta-8 po poprawce startera (Confluence::Page bez grupy przestrzeni), (3) obraz `mcp-server-confluence:m4-<sha>`.
+Kamienie: (1) beta-7: StructuredQuery, stała odmowa, typ poświadczenia, manifest-artefakt (d43fe1f), (2) beta-8: poprawka grantu
+`Confluence::Page`, `QueryScope.narrowedTo`, obraz `mcp-server-confluence:m4-<sha>`.
 
-- Wyszukiwanie: `(text ~ "...")` + zakres linku. Przestrzeń z argumentu nie jest polem normatywnym CQL, więc wycina ją
-  `ConfluenceService` z okna 100 trafień (`FETCH_LIMIT`); wywołujący z wieloma przestrzeniami może dostać mniej niż 25 trafień z jednej.
-  `type = page` zastępuje filtr adaptera (`isCurrentPage`). Wyjątek: `Cql.contentIn` (`id in (...) AND type = page`) to wewnętrzne
-  wyszukiwanie resolvera po identyfikatorach z kontraktowego wzorca, nie zapytanie z danych modelu; do decyzji koordynatora, czy ma
-  zostać (alternatywa: pojedyncze `GET /content/{id}`).
-- Paczka testowa: usunięty `TestPolicyBundle` (schemat 3.1.x odrzucany); `TestGateway.start` publikuje paczkę 4.1.0 z regułami
-  odczytu i zapisu (`confluence-update-space-in-scope` jest w przykładach kontraktów).
-- Znany defekt startera beta-7: `Confluence::Page` odmawiany czytelnikowi bez grupy przestrzeni mimo grantu `read`. Obejście tylko w
-  testach (`ServerTestSupport.reader` dostaje grupę ENG), test `aCallerWithNoSpaceOrPageScope...` wyłączony; po beta-8 usunąć
-  obejście, włączyć test i sprawdzić dwa testy z oczekiwaniem `not_found_or_denied` dla stron bez klasyfikacji.
-- Nie sprawdzone: manifest z `environment: dev` w profilu `devstack` (zmienna procesu w Surefire; pokrywa to test startera).
+- Wyszukiwanie: `(text ~ "...") AND space in ("<space>")`; przestrzeń z argumentu to `scope.narrowedTo`, bez filtrowania odpowiedzi
+  jako jedynego zabezpieczenia (filtr w `ConfluenceService` zostaje jako druga warstwa). `nothingToQuery()` nie jest używane, bo
+  Confluence stosuje prawa użytkownika (brak grantu to nie "nic do zapytania"); pusta jest tylko lista wykluczona przez link.
+- `Cql.contentIn` (`id in (...) AND type = page`) w resolverze zostaje (decyzja koordynatora).
+- Paczka testowa: `TestPolicyBundle` usunięty, `TestGateway.start` publikuje paczkę 4.1.0.
+- Czytelnik bez grupy przestrzeni czyta stronę dozwoloną przez `read` (test `aReaderWithNoSpaceOrPageScope...`). Wywołanie przez
+  link wymaga grupy zakresu (`LINK_TO_ENG` ją ma); przestrzeń poza linkiem to teraz `not_found_or_denied`, nie `access_denied`.
+- Nie sprawdzone: manifest z `environment: dev` w profilu `devstack` (pokrywa to test startera).

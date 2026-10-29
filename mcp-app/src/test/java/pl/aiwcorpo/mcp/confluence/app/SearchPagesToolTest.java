@@ -32,8 +32,8 @@ class SearchPagesToolTest extends ServerTestSupport {
         assertThat(BACKEND.requests().stream().filter(r -> r.path().equals("/rest/api/content/search")).findFirst().orElseThrow())
                 .satisfies(request -> {
             assertThat(request.path()).isEqualTo("/rest/api/content/search");
-            assertThat(request.query()).containsEntry("cql", "(text ~ \"release notes\")")
-                    .containsEntry("limit", "100").containsEntry("expand", "space,version");
+            assertThat(request.query()).containsEntry("cql", "(text ~ \"release notes\") AND space in (\"ENG\")")
+                    .containsEntry("limit", "25").containsEntry("expand", "space,version");
         });
     }
 
@@ -46,7 +46,7 @@ class SearchPagesToolTest extends ServerTestSupport {
             assertThat(result.isError()).isFalse();
         }
         assertThat(BACKEND.requests().stream().filter(r -> r.path().equals("/rest/api/content/search")).findFirst().orElseThrow().query().get("cql"))
-                .isEqualTo("(text ~ \"x OR space HR OR text\")");
+                .isEqualTo("(text ~ \"x OR space HR OR text\") AND space in (\"ENG\")");
     }
 
     @Test

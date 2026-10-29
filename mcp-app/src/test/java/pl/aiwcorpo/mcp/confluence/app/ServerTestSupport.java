@@ -77,13 +77,8 @@ abstract class ServerTestSupport {
         return clientWithToken(ServerTestSupport::writer, credential);
     }
 
-    /**
-     * The read group plus the ENG scope group. Starter 3.0.0-beta-7 refuses a page to a caller with no space group even
-     * when the read policy allows it (defect found in its review, fix in beta-8); the scope group is a test-side
-     * stand-in until the server moves to beta-8, and then this method goes back to the read group alone.
-     */
     static void reader(TestGateway.Token user) {
-        user.username("jkowalski").groups(List.of(READ_GROUP, ENG_SPACE_GROUP));
+        user.username("jkowalski").groups(List.of(READ_GROUP));
     }
 
     static void writer(TestGateway.Token user) {

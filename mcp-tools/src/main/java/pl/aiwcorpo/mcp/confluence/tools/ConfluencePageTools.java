@@ -1,5 +1,6 @@
 package pl.aiwcorpo.mcp.confluence.tools;
 
+import java.util.List;
 import java.util.Set;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -78,7 +79,11 @@ public class ConfluencePageTools {
         if (words.codePoints().noneMatch(Character::isLetterOrDigit)) {
             throw new InvalidToolArgumentException("text must contain at least one letter or digit");
         }
-        QueryScope scope = policy.queryScope(ConfluenceResourceModel.SPACE_TYPE);
+        QueryScope scope = policy.queryScope(ConfluenceResourceModel.SPACE_TYPE).narrowedTo(List.of(spaceKey));
+        // Confluence applies the caller's own rights, so "no grant" is not "nothing to query"; only a link that excludes the space is.
+        if (scope.linkIds().map(Set::isEmpty).orElse(false)) {
+            return new SearchResult(spaceKey, List.of());
+        }
         String cql = scope.cql(Set.of("text"))
                 .where("text", Operator.CONTAINS, words)
                 .build();
