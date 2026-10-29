@@ -15,6 +15,13 @@ public class ConfluenceService implements ConfluenceUseCase {
     /** Upper bound of search hits handed to the model; also what Confluence is asked for. */
     static final int SEARCH_LIMIT = 25;
 
+    /**
+     * What Confluence is asked for. The query cannot name the space (CQL fields are limited by the contract), so it
+     * covers every space the call may search and the named one is cut out here; a wider window keeps hits of other
+     * spaces from using up the 25 places.
+     */
+    static final int FETCH_LIMIT = 100;
+
     private final ConfluenceResourcePort resource;
 
     public ConfluenceService(ConfluenceResourcePort resource) {
@@ -22,13 +29,13 @@ public class ConfluenceService implements ConfluenceUseCase {
     }
 
     /**
-     * The query is the tool's (built from the scope of the call and structured filters), this method only drops what
+     * The query is the tool's (built from the scope of the call and structured filters), this method drops what
      * Confluence returns beyond the named space. Which of the remaining hits the caller may see is the starter's
      * result filter, which judges every hit by its page id.
      */
     @Override
     public List<PageSummary> searchPages(String spaceKey, String cql) {
-        return resource.searchPages(cql, SEARCH_LIMIT).stream()
+        return resource.searchPages(cql, FETCH_LIMIT).stream()
                 .filter(hit -> spaceKey.equalsIgnoreCase(hit.spaceKey()))
                 .limit(SEARCH_LIMIT)
                 .toList();

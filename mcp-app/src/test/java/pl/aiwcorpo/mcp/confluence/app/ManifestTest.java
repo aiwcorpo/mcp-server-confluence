@@ -50,6 +50,16 @@ class ManifestTest extends ServerTestSupport {
         return JSON.readTree(response.body());
     }
 
+    @Test
+    void theBuildArtefactEqualsTheServedManifestAndNamesNoEnvironment() throws Exception {
+        JsonNode served = manifest();
+        JsonNode artefact = JSON.readTree(java.nio.file.Files.readString(MANIFEST_FILE));
+
+        assertThat(artefact).isEqualTo(served);
+        assertThat(artefact.has("environment")).as("only the devstack profile marks a manifest as dev").isFalse();
+        assertThat(artefact.path("credential").path("acceptedTypes").toString()).isEqualTo("[\"user-secret\"]");
+    }
+
     /** The raw {@code tools/list} result, as a client receives it. */
     private List<JsonNode> listedTools() throws Exception {
         HttpResponse<String> initialize = post("""

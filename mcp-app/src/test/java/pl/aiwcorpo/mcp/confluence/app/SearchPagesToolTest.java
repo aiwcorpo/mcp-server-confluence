@@ -32,8 +32,8 @@ class SearchPagesToolTest extends ServerTestSupport {
         assertThat(BACKEND.requests().stream().filter(r -> r.path().equals("/rest/api/content/search")).findFirst().orElseThrow())
                 .satisfies(request -> {
             assertThat(request.path()).isEqualTo("/rest/api/content/search");
-            assertThat(request.query()).containsEntry("cql", "space = \"ENG\" AND type = \"page\" AND text ~ \"release notes\"")
-                    .containsEntry("limit", "25").containsEntry("expand", "space,version");
+            assertThat(request.query()).containsEntry("cql", "(text ~ \"release notes\")")
+                    .containsEntry("limit", "100").containsEntry("expand", "space,version");
         });
     }
 
@@ -46,7 +46,7 @@ class SearchPagesToolTest extends ServerTestSupport {
             assertThat(result.isError()).isFalse();
         }
         assertThat(BACKEND.requests().stream().filter(r -> r.path().equals("/rest/api/content/search")).findFirst().orElseThrow().query().get("cql"))
-                .isEqualTo("space = \"ENG\" AND type = \"page\" AND text ~ \"x OR space HR OR text\"");
+                .isEqualTo("(text ~ \"x OR space HR OR text\")");
     }
 
     @Test
@@ -92,7 +92,7 @@ class SearchPagesToolTest extends ServerTestSupport {
     @Test
     void aRedirectIsAnErrorNotAnEmptyResult() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
-            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "REDIR", "text", "x"));
+            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "REDIR", "text", "REDIR"));
 
             assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain(StubBackend.BODY_MARKER);
             assertThat(BACKEND.elsewhereHits()).isEmpty();
@@ -102,7 +102,7 @@ class SearchPagesToolTest extends ServerTestSupport {
     @Test
     void wordsThatConfluenceCannotParseAreInvalidArgumentWithoutItsMessage() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
-            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "BAD", "text", "AND"));
+            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "BAD", "text", "BAD"));
 
             assertThat(text(result)).contains("\"error\":\"invalid_argument\"").doesNotContain(StubBackend.BODY_MARKER);
         }

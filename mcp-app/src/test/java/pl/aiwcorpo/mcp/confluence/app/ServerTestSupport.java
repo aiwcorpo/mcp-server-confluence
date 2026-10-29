@@ -40,19 +40,21 @@ abstract class ServerTestSupport {
     static final String ENG_SPACE_GROUP = "mcp-confluence-space-ENG";
     /** Maps to the page tree {@code Confluence::Page/1000} in the sample bundle of the contracts. */
     static final String HANDBOOK_EDITORS_GROUP = "mcp-confluence-handbook-editors";
+    /** {@code target/mcp-manifest.json} of this module. */
+    static final java.nio.file.Path MANIFEST_FILE = java.nio.file.Path.of("target", "mcp-manifest.json").toAbsolutePath();
     static final Set<String> CONTRACT_SYSTEMS = contractSystems();
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
     static final StubBackend BACKEND = StubBackend.start();
 
-    static {
-        TestPolicyBundle.publishOn(GATEWAY.main());
-    }
-
     @DynamicPropertySource
     static void environment(DynamicPropertyRegistry registry) {
         GATEWAY.serverProperties().forEach((name, value) -> registry.add(name, () -> value));
         registry.add("confluence.backend.base-url", BACKEND::baseUrl);
+        // TestGateway accepts user-oauth too; Confluence takes only the PAT, as in application.yml.
+        registry.add("aiwcorpo.mcp.platform.manifest.accepted-credential-types", () -> "user-secret");
+        // The build artefact that CI registers at the gateway (mcp-registry-ci-mcp-confluence); written when the context starts.
+        registry.add("aiwcorpo.mcp.platform.manifest.output-file", () -> MANIFEST_FILE.toString());
         // Short limits so the timeout and size tests run quickly; StubBackend's slow and huge pages exceed them.
         registry.add("confluence.backend.read-timeout", () -> "1s");
         registry.add("confluence.backend.max-response-size", () -> "64KB");
@@ -75,8 +77,13 @@ abstract class ServerTestSupport {
         return clientWithToken(ServerTestSupport::writer, credential);
     }
 
+    /**
+     * The read group plus the ENG scope group. Starter 3.0.0-beta-7 refuses a page to a caller with no space group even
+     * when the read policy allows it (defect found in its review, fix in beta-8); the scope group is a test-side
+     * stand-in until the server moves to beta-8, and then this method goes back to the read group alone.
+     */
     static void reader(TestGateway.Token user) {
-        user.username("jkowalski").groups(List.of(READ_GROUP));
+        user.username("jkowalski").groups(List.of(READ_GROUP, ENG_SPACE_GROUP));
     }
 
     static void writer(TestGateway.Token user) {

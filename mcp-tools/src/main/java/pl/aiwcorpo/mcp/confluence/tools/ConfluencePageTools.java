@@ -79,9 +79,7 @@ public class ConfluencePageTools {
             throw new InvalidToolArgumentException("text must contain at least one letter or digit");
         }
         QueryScope scope = policy.queryScope(ConfluenceResourceModel.SPACE_TYPE);
-        String cql = scope.cql(Set.of("space", "type", "text"))
-                .where("space", Operator.EQUALS, spaceKey)
-                .where("type", Operator.EQUALS, "page")
+        String cql = scope.cql(Set.of("text"))
                 .where("text", Operator.CONTAINS, words)
                 .build();
         return new SearchResult(spaceKey, useCase.searchPages(spaceKey, cql).stream().map(PageHit::of).toList());

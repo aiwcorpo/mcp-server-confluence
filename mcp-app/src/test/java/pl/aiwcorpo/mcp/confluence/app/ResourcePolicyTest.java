@@ -68,11 +68,28 @@ class ResourcePolicyTest extends ServerTestSupport {
             McpSchema.CallToolResult longList = call(client, "get_page", Map.of("pageId", "4003"));
             McpSchema.CallToolResult space = call(client, "get_space", Map.of("space", "UNCL"));
 
+            for (McpSchema.CallToolResult result : List.of(noList, longList)) {
+                assertNotFoundOrDenied(result);
+            }
+            assertThat(space.isError()).isTrue();
+            assertThat(text(space)).contains("\"error\":\"internal_error\"");
             for (McpSchema.CallToolResult result : List.of(noList, longList, space)) {
-                assertThat(result.isError()).isTrue();
-                assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain("no labels known", "unclear");
+                assertThat(text(result)).doesNotContain("no labels known", "unclear");
             }
         }
+    }
+
+    @Test
+    @org.junit.jupiter.api.Disabled("starter beta-7 defect: it also refuses a reader with a read grant; re-enable and re-check on beta-8")
+    void aCallerWithNoSpaceOrPageScopeGetsNotFoundOrDeniedForAPageBeforeAnyLookup() {
+        try (McpSyncClient client = clientWithToken(user -> user.username("jkowalski").groups(List.of(READ_GROUP)), PAT)) {
+            McpSchema.CallToolResult existing = call(client, "get_page", Map.of("pageId", "1000"));
+            McpSchema.CallToolResult missing = call(client, "get_page", Map.of("pageId", "1404"));
+
+            assertNotFoundOrDenied(existing);
+            assertThat(text(existing)).isEqualTo(text(missing));
+        }
+        assertThat(BACKEND.requests()).as("the resolver never ran").isEmpty();
     }
 
     @Test
@@ -172,9 +189,11 @@ class ResourcePolicyTest extends ServerTestSupport {
             McpSchema.CallToolResult page = call(client, "get_page", Map.of("pageId", "4004"));
             McpSchema.CallToolResult space = call(client, "get_space", Map.of("space", "FULL"));
 
+            assertNotFoundOrDenied(page);
+            assertThat(space.isError()).isTrue();
+            assertThat(text(space)).contains("\"error\":\"internal_error\"");
             for (McpSchema.CallToolResult result : List.of(page, space)) {
-                assertThat(result.isError()).isTrue();
-                assertThat(text(result)).contains("\"error\":\"internal_error\"").doesNotContain("full");
+                assertThat(text(result)).doesNotContain("full");
             }
         }
     }
@@ -182,7 +201,7 @@ class ResourcePolicyTest extends ServerTestSupport {
     @Test
     void aHitThatCannotBeResolvedIsDroppedAndTheSearchStillAnswers() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
-            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "FAIL", "text", "x"));
+            McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "FAIL", "text", "FAIL"));
 
             assertThat(result.isError()).isFalse();
             assertThat(text(result)).contains("\"pages\":[]").doesNotContain("Failing");

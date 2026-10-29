@@ -191,17 +191,15 @@ final class StubBackend {
                     results.add(contentNode(fixture, expand));
                 }
             }
-        } else if (cql.contains("space = \"ENG\"")) {
+        } else if (cql.contains("text ~ \"FAIL\"")) {
+            results.add(contentNode(new Fixture("1500", "page", "FAIL", "Failing", 1, List.of(), null, null), expand));
+        } else {
             results.add(listed("1000", "ENG", expand));
             results.add(listed("1001", "ENG", expand));
             results.add(listed("1002", "ENG", expand));
             results.add(listed("2000", "ENG", expand));
             results.add(listed("2002", "ENG", expand));
             results.add(listed("4002", "ENG", expand));
-        } else if (cql.contains("space = \"HR\"")) {
-            results.add(listed("2000", "HR", expand));
-        } else if (cql.contains("space = \"FAIL\"")) {
-            results.add(contentNode(new Fixture("1500", "page", "FAIL", "Failing", 1, List.of(), null, null), expand));
         }
         response.put("start", 0).put("limit", Integer.parseInt(query.getOrDefault("limit", "25")))
                 .put("size", results.size());

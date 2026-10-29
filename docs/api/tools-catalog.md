@@ -13,7 +13,7 @@ tą tabelą.
 
 Wszystkie argumenty są wymagane, `inputSchema` ma `additionalProperties: false` i limity
 `minLength`/`maxLength`/`pattern` (z `@ArgumentLimits`). Wzorce identyfikatorów to `ConfluenceSpaceKey` i
-`ConfluencePageId` z `mcp-contracts` 3.1.0, brane przez `contractPattern` ze startera (kopia w `ConfluenceIds`
+`ConfluencePageId` z `mcp-contracts` 4.1.0, brane przez `contractPattern` ze startera (kopia w `ConfluenceIds`
 służy drugiej linii walidacji w kodzie). Naruszenie schematu daje `invalid_argument` ze startera.
 
 ## Wywołania Confluence Data Center
