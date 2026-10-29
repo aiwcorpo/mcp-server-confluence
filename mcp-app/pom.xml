@@ -38,6 +38,24 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!-- The manifest registered at the gateway is a build artefact (ManifestArtefact); -DskipTests does not skip it. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>manifest-artefact</id>
+                        <phase>package</phase>
+                        <goals><goal>java</goal></goals>
+                        <configuration>
+                            <mainClass>pl.aiwcorpo.mcp.confluence.app.ManifestArtefact</mainClass>
+                            <classpathScope>test</classpathScope>
+                            <arguments><argument>${project.build.directory}/mcp-manifest.json</argument></arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

@@ -4,7 +4,7 @@ M1: osiągnięty (2026-10-27; od 2026-10-28 na starterze 3.0.0-alpha-10) - `sear
 
 M3: osiągnięty (2026-10-28) - starter 3.0.0-beta-4 (kontrakty 3.1.0): `@ToolTitle` na czterech narzędziach, `@ResourceRef` i `ResourceResolver` dla `Confluence::Page` i `Confluence::Space` (etykiety przestrzeni jako klasyfikacja, `restricted` przez etykietę, `ancestorIds`), wyszukiwanie CQL ze `StructuredQuery` i `QueryScope` (link wirtualnego serwera), `ResultFilter` na trafieniach, polityki z podpisanej paczki, `GET /mcp-manifest` zgodny z `tools/list`; 75 testów na stubie Confluence DC.
 
-M4: osiągnięty (2026-10-29) - starter 3.0.0-beta-8 (kontrakty 4.1.0), CQL ze `StructuredQuery` z pól normatywnych, stały tekst `not_found_or_denied`, typ `user-secret` jako jedyny i domyślny, manifest jako artefakt budowy (`mcp-app/target/mcp-manifest.json`), 79 testów.
+M4: osiągnięty (2026-10-29) - starter 3.0.0-beta-9 (kontrakty 4.1.0), CQL ze `StructuredQuery` z pól normatywnych, stały tekst `not_found_or_denied`, typ `user-secret` jako jedyny i domyślny, manifest jako artefakt budowy (`mcp-app/target/mcp-manifest.json`), 79 testów.
 
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni).
 
@@ -225,16 +225,19 @@ Kategoria (b) z recenzji M1 (zmiana kontraktu) dla tego serwera: brak poza CC-07
 
 BOM alpha-10 -> alpha-11 (MIGRATION-3.0.md, sekcja "Zmiany w 3.0.0-alpha-11"). `DevProfileLoopbackTest` sprawdza regułę guarda przez `DevProfileGuardAssertions.assertDevProfileLoopbackRule()` (A10-M1), więc przechodzi także w kontenerze CI. `./mvnw clean verify`: 50 testów, 0 błędów; `INVOCATION_ID=ci ./mvnw -B verify`: bez różnic. Start lokalny w profilu `dev`: health 200, POST /mcp bez JWT 401.
 
-## M4 (2026-10-29): beta-8
+## M4 (2026-10-29): beta-9
 
-Kamienie: (1) beta-7: StructuredQuery, stała odmowa, typ poświadczenia, manifest-artefakt (d43fe1f), (2) beta-8: poprawka grantu
-`Confluence::Page`, `QueryScope.narrowedTo`, obraz `mcp-server-confluence:m4-<sha>`.
+Kamienie: (1) beta-7: StructuredQuery, stała odmowa, typ poświadczenia (d43fe1f), (2) beta-8: `QueryScope.narrowedTo` (28b6b0a),
+(3) beta-9 i poprawki recenzji: manifest w fazie `package`, bez obejść w testach. Obraz: patrz linia "Obraz" niżej.
 
-- Wyszukiwanie: `(text ~ "...") AND space in ("<space>")`; przestrzeń z argumentu to `scope.narrowedTo`, bez filtrowania odpowiedzi
-  jako jedynego zabezpieczenia (filtr w `ConfluenceService` zostaje jako druga warstwa). `nothingToQuery()` nie jest używane, bo
-  Confluence stosuje prawa użytkownika (brak grantu to nie "nic do zapytania"); pusta jest tylko lista wykluczona przez link.
+- Wyszukiwanie: `(text ~ "...") AND space in ("<space>")` przez `scope.narrowedTo`. `nothingToQuery()` nie jest używane
+  (Confluence stosuje prawa użytkownika); pusta jest tylko lista wykluczona przez link. Filtr w `ConfluenceService` to druga warstwa.
 - `Cql.contentIn` (`id in (...) AND type = page`) w resolverze zostaje (decyzja koordynatora).
-- Paczka testowa: `TestPolicyBundle` usunięty, `TestGateway.start` publikuje paczkę 4.1.0.
-- Czytelnik bez grupy przestrzeni czyta stronę dozwoloną przez `read` (test `aReaderWithNoSpaceOrPageScope...`). Wywołanie przez
-  link wymaga grupy zakresu (`LINK_TO_ENG` ją ma); przestrzeń poza linkiem to teraz `not_found_or_denied`, nie `access_denied`.
+- Manifest: `mcp-app/target/mcp-manifest.json` powstaje w `package` (`ManifestArtefact`, także z `-DskipTests`), z konfiguracji z
+  `application.yml` (wersja z pom, adres, typy); `application-dev.yml` nie ma już własnej wersji.
+- Błąd startera, nie wymóg serwera: w beta-8 wywołanie przez link zawężony do przestrzeni odmawiało czytelnikowi bez grupy
+  przestrzeni (`not_found_or_denied`). Poprzedni wpis o "wymogu grupy zakresu" był błędny; obejście w `LINK_TO_ENG` usunięte po
+  beta-9, test `aReaderWithoutAScopeGroupReadsAPageOfTheLinkedSpaceThroughTheLink` pilnuje przypadku.
+- Przestrzeń poza linkiem w `search_pages` to `not_found_or_denied` (nie `access_denied`).
+- Testy: `CredentialTypeTest` (brak nagłówka typu, zła pisownia, zero żądań), zapis bez grantu = zero żądań do Confluence.
 - Nie sprawdzone: manifest z `environment: dev` w profilu `devstack` (pokrywa to test startera).

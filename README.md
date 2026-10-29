@@ -1,7 +1,7 @@
 # mcp-confluence: serwer MCP dla Confluence Data Center
 
 Serwer MCP dla systemu `confluence` (Confluence Data Center, REST API `/rest/api/content`), zbudowany na
-`mcp-platform-starter` 3.0.0-beta-8 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
+`mcp-platform-starter` 3.0.0-beta-9 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
 4.1.0). Stoi wyłącznie za gateway'em platformy: przyjmuje ruch tylko po mTLS z wewnętrznym JWT gateway'a (C2),
 a do Confluence woła z osobistym tokenem dostępu (PAT) użytkownika, który gateway dołącza do każdego żądania
 (C3). Bez poprawnego JWT odpowiada 401, nie ma trybu anonimowego.
@@ -25,7 +25,7 @@ i `POST /rest/api/content`.
 
 | Narzędzie (klient widzi `confluence__<nazwa>`) | Tytuł | Ryzyko | Akcja Cedar | Uprawnienie (grupa) | Zasób (`@ResourceRef`) | Argumenty | Wynik |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `mcp-confluence-read` `space`: `Confluence::Space`; zakres linku w CQL (`QueryScope`), `space` zawęża zakres (`QueryScope.narrowedTo`), trafienia filtrowane po `id` (`Confluence::Page`) | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200 znaków, jedna linia) | `{spaceKey, pages: [{id, title: untrusted-data, version, lastUpdated}]}`, do 25 stron |
+| `search_pages` | Szukaj stron | `READ_ONLY` | `read` | `mcp-confluence-read` | `space`: `Confluence::Space`; zakres linku w CQL (`QueryScope`), `space` zawęża zakres (`QueryScope.narrowedTo`), trafienia filtrowane po `id` (`Confluence::Page`) | `space` (`^[A-Za-z0-9]{1,255}$`), `text` (1-200 znaków, jedna linia) | `{spaceKey, pages: [{id, title: untrusted-data, version, lastUpdated}]}`, do 25 stron |
 | `get_page` | Pobierz stronę | `READ_ONLY` | `read` | `mcp-confluence-read` | `pageId`: `Confluence::Page` | `pageId` (`^[1-9][0-9]{0,18}$`) | `{id, spaceKey, title, version, lastUpdated, ancestorIds, body: untrusted-data, omittedMacros}` |
 | `get_space` | Pobierz przestrzeń | `READ_ONLY` | `read` | `mcp-confluence-read` | `space`: `Confluence::Space` | `space` | `{key, name: untrusted-data}` |
 | `create_page` | Utwórz stronę | `UPDATE` | `update` | `mcp-confluence-write` oraz zakres (przestrzeń albo drzewo stron) przyznany grupą | `space`: `Confluence::Space`, `parentId`: `Confluence::Page` | `space` (musi być przestrzenią rodzica), `parentId`, `title` (1-255, jedna linia), `body` (zwykły tekst, 1-20000) | `{id, spaceKey, title: untrusted-data, version}` |
@@ -37,9 +37,7 @@ Wszystkie używają poświadczenia `user-secret` (PAT) jako `Bearer`; `accepted-
 Wyszukiwanie składa CQL ze `StructuredQuery`: warunek `text ~ "..."` w nawiasie, potem zakres linku (`space in (...)`).
 Pola CQL są normatywne (`text`, `title`, `label`), więc przestrzeń z argumentu wchodzi do zapytania jako zakres:
 `scope.narrowedTo([space])` daje `space in ("ENG")` (przecięcie z linkiem; puste przecięcie to pusta lista bez wywołania Confluence).
-Strona w przestrzeni, której
-wywołujący nie ma w paczce polityk żadnego zakresu (przestrzeni ani drzewa stron), to `not_found_or_denied` przed resolverem. `title` w tabeli to polski tytuł z `@ToolTitle`
-(część `definitionHash`).
+Odczyt strony idzie według praw użytkownika w Confluence i polityki `read`; grupa zakresu przestrzeni nie jest wymagana, także przy linku zawężonym do przestrzeni.
 
 Błędy (C10) wspólne dla wszystkich: `credential_required` (brak poświadczenia, 401 z Confluence albo schemat inny
 niż `Bearer`), `not_found_or_denied` (404 i 403, ten sam tekst), `invalid_argument`, `upstream_unavailable`,
@@ -56,10 +54,13 @@ Szczegóły i uzasadnienia: `docs/api/tools-catalog.md`.
 
 ### Manifest i metryki
 
-Manifest do rejestracji w gateway'u to artefakt budowy: `./mvnw verify` zapisuje `mcp-app/target/mcp-manifest.json`
-(`manifest.output-file` ustawione w `ServerTestSupport`), CI rejestruje go certyfikatem `mcp-registry-ci-mcp-confluence`.
-Tylko `READ_ONLY` jest zatwierdzane automatycznie; `create_page` (`UPDATE`) czeka na `approve` administratora. W profilu
-`devstack` manifest ma `"environment": "dev"` i produkcyjny gateway go odrzuca (`environment_mismatch`).
+Manifest do rejestracji w gateway'u to artefakt budowy `mcp-app/target/mcp-manifest.json`. Powstaje w fazie `package`
+(`exec-maven-plugin`, klasa testowa `ManifestArtefact`), więc jest też po `./mvnw -DskipTests package`. Serwer startuje w
+profilu `dev` za `TestGateway`, ale wszystkie właściwości `manifest.*` pochodzą z `application.yml`: wersja z pom, adres
+wewnętrzny i typy poświadczeń, nigdy wartości testowe. CI bierze plik z tej ścieżki (`mcp-app/target/`, nie `target/` w katalogu
+głównym) i rejestruje go certyfikatem `mcp-registry-ci-mcp-confluence`. Tylko `READ_ONLY` jest zatwierdzane automatycznie;
+`create_page` (`UPDATE`) czeka na `approve` administratora. W profilu `devstack` manifest ma `"environment": "dev"` i produkcyjny
+gateway go odrzuca (`environment_mismatch`). `ManifestTest` sprawdza mechanikę pliku na kontekście testowym (`target/test-mcp-manifest.json`).
 
 Alerty: zdarzenia `authentication` ponad limit zlicza `mcp_audit_authentication_suppressed_total` (tagi `component`, `reason`);
 nazwa `mcp_server_audit_authentication_suppressed_total` z wcześniejszych wersji nie istnieje.
@@ -209,11 +210,11 @@ hosta (`mcp-gateway/scripts/run-dev-host.sh`, JWKS na `localhost:18445`) skonfig
 
 | Klasa | Co sprawdza |
 | --- | --- |
-| `CredentialTypeTest` | `user-secret` przechodzi; `user-oauth`, `token-exchange`, `service-account` -> `internal_error` bez wywołania Confluence |
+| `CredentialTypeTest` | `user-secret` przechodzi; `user-oauth`, `token-exchange`, `service-account`, brak nagłówka typu i błędna pisownia -> `internal_error`, zero żądań do Confluence |
 | `SearchPagesToolTest` | CQL budowany przez serwer ze `StructuredQuery` (dokładny `cql`: warunek w nawiasie, `limit` 25, zakres `space in (...)`, `expand`); CQL w `text` nie poszerza zapytania; blog i trafienia z innej przestrzeni odrzucone; pusta przestrzeń -> pusta lista; `credential_required` (brak, 401); zły `space`/`text` i dodatkowy argument `cql` -> `invalid_argument` bez wywołania Confluence; 400 wyszukiwarki -> `invalid_argument` bez jej tekstu; przekierowanie to błąd, nie pusty wynik; tytuły jako `untrusted-data` |
 | `GetPageToolTest` | PAT z C3 dociera do Confluence; makra include/excerpt-include nie dają treści z HR (stub oddaje rozwiniętą treść tylko w `body.view`, adapter prosi o `body.storage`); 404 = 403; blog i przestrzeń osobista -> `not_found_or_denied`; `credential_required` (brak, 401, schemat `Basic`); zły `pageId` i nieznany argument (nazwa nie trafia do logu) -> `invalid_argument` bez wywołania Confluence; nieczytelna odpowiedź, strona bez `id` albo bez treści, przekierowanie (bez podążania) i odpowiedź ponad limit -> `internal_error` bez treści w logu; PAT i treść błędu Confluence ani w wyniku, ani w logu |
 | `CreatePageToolTest` | rodzic sprawdzany przed zapisem; treść escapowana (dokładne `body.storage.value`); rodzic z innej przestrzeni, nieistniejący i zabroniony -> ten sam `not_found_or_denied` bez POST; 400 Confluence -> `invalid_argument` bez tekstu Confluence; `credential_required` (brak, 401); `UPDATE` bez `readOnlyHint`; złe argumenty |
-| `ResourcePolicyTest` | strona i przestrzeń `restricted` = brak (ten sam tekst), nieznane etykiety: strona -> `not_found_or_denied`, przestrzeń -> `internal_error`, brak grupy -> `access_denied` bez wywołania Confluence, link zawężony do ENG ukrywa strony i przestrzenie poza nim, wyszukiwanie poza linkiem to pusta lista bez zapytania, trafienia oceniane po aktualnej przestrzeni (indeks vs. rzeczywistość), awaria resolvera usuwa trafienie, `create_page`: zakres przestrzeni albo drzewa, rodzic z innej lub zastrzeżonej przestrzeni |
+| `ResourcePolicyTest` | strona i przestrzeń `restricted` = brak (ten sam tekst), nieznane etykiety: strona -> `not_found_or_denied`, przestrzeń -> `internal_error`, brak grupy -> `access_denied` bez wywołania Confluence, link zawężony do ENG ukrywa strony i przestrzenie poza nim, przestrzeń poza linkiem w wyszukiwaniu -> `not_found_or_denied` bez zapytania, trafienia oceniane po aktualnej przestrzeni (indeks vs. rzeczywistość), awaria resolvera usuwa trafienie, `create_page`: zakres przestrzeni albo drzewa, rodzic z innej lub zastrzeżonej przestrzeni |
 | `ManifestTest` | plik `target/mcp-manifest.json` równy odpowiedzi i bez `environment`; `GET /mcp-manifest` przechodzi reguły gateway'a, definicje równe `tools/list` (`definitionHash`), tytuły, `resourceRefs` i ryzyko |
 | `ToolListingTest` | dokładnie cztery narzędzia; `additionalProperties: false`, `minLength`/`maxLength`/`pattern` w `inputSchema`; wzorce identyfikatorów z kontraktu |
 | `ProductionConfigurationTest` | konfiguracja bazowa: `client-auth: need`; backend `http` poza `dev` odrzucony (chyba że jawnie dopuszczony); `dev` na 127.0.0.1 |

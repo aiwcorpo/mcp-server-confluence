@@ -38,7 +38,41 @@ class CredentialTypeTest extends ServerTestSupport {
                 assertThat(text(result)).as(type.name()).contains("\"error\":\"internal_error\"");
             }
         }
-        assertThat(BACKEND.authorizations()).isEmpty();
+        assertThat(BACKEND.requests()).isEmpty();
+    }
+
+    @Test
+    void aMissingOrMisspelledTypeHeaderIsRefusedAndNothingReachesConfluence() {
+        for (String header : new String[] {null, "User-Secret", "USER_SECRET", "unknown"}) {
+            try (McpSyncClient client = clientWithHeader(header)) {
+                McpSchema.CallToolResult result = call(client, "get_space", Map.of("space", "OPS"));
+
+                assertThat(result.isError()).as(String.valueOf(header)).isTrue();
+                assertThat(text(result)).as(String.valueOf(header)).contains("\"error\":\"internal_error\"");
+            }
+        }
+        assertThat(BACKEND.requests()).isEmpty();
+    }
+
+    private McpSyncClient clientWithHeader(String typeHeader) {
+        var gateway = GATEWAY.asGateway(ServerTestSupport::reader, PAT, BackendCredential.Type.USER_SECRET);
+        var customizer = (io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer)
+                (request, method, uri, body, context) -> {
+            var builder = (java.net.http.HttpRequest.Builder) java.lang.reflect.Proxy.newProxyInstance(
+                    getClass().getClassLoader(), new Class<?>[] {java.net.http.HttpRequest.Builder.class},
+                    (proxy, call, args) -> {
+                        if (call.getName().equals("setHeader") && "X-MCP-Credential-Type".equals(args[0])) {
+                            return typeHeader == null ? proxy : call.invoke(request, args[0], typeHeader);
+                        }
+                        return call.invoke(request, args);
+                    });
+            gateway.customize(builder, method, uri, body, context);
+        };
+        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(baseUrl())
+                .endpoint(ENDPOINT).openConnectionOnStartup(false).httpRequestCustomizer(customizer).build();
+        McpSyncClient client = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(20)).build();
+        client.initialize();
+        return client;
     }
 
     private McpSyncClient clientWithType(BackendCredential.Type type) {

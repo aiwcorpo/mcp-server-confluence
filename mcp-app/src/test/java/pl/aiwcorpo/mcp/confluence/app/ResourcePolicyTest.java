@@ -18,8 +18,7 @@ import pl.aiwcorpo.mcp.platform.test.TestGateway;
 class ResourcePolicyTest extends ServerTestSupport {
 
     private static final Consumer<TestGateway.Token> LINK_TO_ENG = user -> {
-        // A link narrows the scopes the caller already holds, so the caller holds the ENG scope group.
-        user.username("jkowalski").groups(List.of(READ_GROUP, ENG_SPACE_GROUP));
+        reader(user);
         user.virtualServer("eng-only", Map.of("confluenceSpaces", List.of("ENG")));
     };
 
@@ -118,6 +117,14 @@ class ResourcePolicyTest extends ServerTestSupport {
             assertNotFoundOrDenied(outside);
             assertThat(text(outside)).isEqualTo(text(missing)).doesNotContain("Restart the job");
             assertThat(spaceOutside.isError()).isTrue();
+        }
+    }
+
+    @Test
+    void aReaderWithoutAScopeGroupReadsAPageOfTheLinkedSpaceThroughTheLink() {
+        try (McpSyncClient client = clientWithToken(LINK_TO_ENG, PAT)) {
+            assertThat(call(client, "get_page", Map.of("pageId", "1000")).isError()).isFalse();
+            assertNotFoundOrDenied(call(client, "get_page", Map.of("pageId", "4001")));
         }
     }
 
@@ -221,7 +228,7 @@ class ResourcePolicyTest extends ServerTestSupport {
             assertThat(call(treeOnly, "create_page", inEng).isError()).as("a page tree grant is not a grant on the space").isTrue();
             assertThat(call(noGrant, "create_page", inEng).isError()).isTrue();
         }
-        assertThat(BACKEND.requests()).noneMatch(request -> "POST".equals(request.method()));
+        assertThat(BACKEND.requests()).as("the grant is judged before the resolver asks Confluence").isEmpty();
     }
 
     @Test

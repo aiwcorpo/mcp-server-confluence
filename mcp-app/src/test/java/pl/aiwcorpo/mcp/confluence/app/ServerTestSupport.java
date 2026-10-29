@@ -40,8 +40,7 @@ abstract class ServerTestSupport {
     static final String ENG_SPACE_GROUP = "mcp-confluence-space-ENG";
     /** Maps to the page tree {@code Confluence::Page/1000} in the sample bundle of the contracts. */
     static final String HANDBOOK_EDITORS_GROUP = "mcp-confluence-handbook-editors";
-    /** {@code target/mcp-manifest.json} of this module. */
-    static final java.nio.file.Path MANIFEST_FILE = java.nio.file.Path.of("target", "mcp-manifest.json").toAbsolutePath();
+    static final java.nio.file.Path MANIFEST_FILE = java.nio.file.Path.of("target", "test-mcp-manifest.json").toAbsolutePath();
     static final Set<String> CONTRACT_SYSTEMS = contractSystems();
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
@@ -53,7 +52,7 @@ abstract class ServerTestSupport {
         registry.add("confluence.backend.base-url", BACKEND::baseUrl);
         // TestGateway accepts user-oauth too; Confluence takes only the PAT, as in application.yml.
         registry.add("aiwcorpo.mcp.platform.manifest.accepted-credential-types", () -> "user-secret");
-        // The build artefact that CI registers at the gateway (mcp-registry-ci-mcp-confluence); written when the context starts.
+        // Test copy of the manifest file; the registered artefact is written by ManifestArtefact in the package phase.
         registry.add("aiwcorpo.mcp.platform.manifest.output-file", () -> MANIFEST_FILE.toString());
         // Short limits so the timeout and size tests run quickly; StubBackend's slow and huge pages exceed them.
         registry.add("confluence.backend.read-timeout", () -> "1s");
