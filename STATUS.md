@@ -241,3 +241,4 @@ Kamienie: (1) beta-7: StructuredQuery, stała odmowa, typ poświadczenia (d43fe1
 - Przestrzeń poza linkiem w `search_pages` to `not_found_or_denied` (nie `access_denied`).
 - Testy: `CredentialTypeTest` (brak nagłówka typu, zła pisownia, zero żądań), zapis bez grantu = zero żądań do Confluence.
 - Nie sprawdzone: manifest z `environment: dev` w profilu `devstack` (pokrywa to test startera).
+Obraz: mcp-server-confluence:m4-bb3289e
