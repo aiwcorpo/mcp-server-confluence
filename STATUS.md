@@ -256,3 +256,7 @@ Obraz: mcp-server-confluence:m4-bb3289e
 - A10-M1: `DevProfileLoopbackTest` używa `DevProfileGuardAssertions` (bez hostowego startu z `--server.address`); sprawdzone z `INVOCATION_ID=ci KUBERNETES_SERVICE_HOST=10.0.0.1`. Żadnych wycięć bramek.
 - Dowód lokalny: `ci/run.sh verify` 78 przypadków, 0 pominiętych; manifest: `serverId mcp-confluence`, 4 narzędzia, `acceptedTypes [user-secret]`, bez `environment`. Obraz zbudowany z Dockerfile repo, nie wdrażany.
 - Nie sprawdzone: testy z paczką `mcp-policies/out/repository-m5` (testy idą na paczce przykładowej kontraktów); uruchomienie w kontenerze runnera i `ci/run.sh image` na `main` z runnera.
+
+Poprawki CI po przeglądzie szablonu 3df797e (2026-10-31): hygiene fail-closed, liczniki testów per moduł (CI_TEST_MODULES, CI_APP_MIN_TESTS),
+tag obrazu `mcp-server-confluence:m5-<sha7>`, `ManifestTest` porównuje hash (gdy listy typów równe) i wersję z pom, test `vs`/`vsc` ma kontrolę pozytywną (powód w logu: invalid_claims).
+- Dowód: `ci/run.sh verify` 78 przypadków uruchomionych, `ci/run.sh bogus` daje 2, obraz `mcp-server-confluence:m5-f01a612` zbudowany z `ci/run.sh image`.
