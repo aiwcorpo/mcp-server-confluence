@@ -40,7 +40,6 @@ abstract class ServerTestSupport {
     static final String ENG_SPACE_GROUP = "mcp-confluence-space-ENG";
     /** Maps to the page tree {@code Confluence::Page/1000} in the sample bundle of the contracts. */
     static final String HANDBOOK_EDITORS_GROUP = "mcp-confluence-handbook-editors";
-    static final java.nio.file.Path MANIFEST_FILE = java.nio.file.Path.of("target", "test-mcp-manifest.json").toAbsolutePath();
     static final Set<String> CONTRACT_SYSTEMS = contractSystems();
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
@@ -52,8 +51,6 @@ abstract class ServerTestSupport {
         registry.add("confluence.backend.base-url", BACKEND::baseUrl);
         // TestGateway accepts user-oauth too; Confluence takes only the PAT, as in application.yml.
         registry.add("aiwcorpo.mcp.platform.manifest.accepted-credential-types", () -> "user-secret");
-        // Test copy of the manifest file; the registered artefact is written by ManifestArtefact in the package phase.
-        registry.add("aiwcorpo.mcp.platform.manifest.output-file", () -> MANIFEST_FILE.toString());
         // Short limits so the timeout and size tests run quickly; StubBackend's slow and huge pages exceed them.
         registry.add("confluence.backend.read-timeout", () -> "1s");
         registry.add("confluence.backend.max-response-size", () -> "64KB");
@@ -84,7 +81,7 @@ abstract class ServerTestSupport {
         user.username("jkowalski").groups(List.of(READ_GROUP, WRITE_GROUP, ENG_SPACE_GROUP));
     }
 
-    /** As {@link #clientWithCredential}, with the caller's token shaped by {@code user} (claims of a link call). */
+    /** As {@link #clientWithCredential}, with the caller's token shaped by {@code user} . */
     McpSyncClient clientWithToken(java.util.function.Consumer<TestGateway.Token> user, String credential) {
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(baseUrl())
                 .endpoint(ENDPOINT)
@@ -121,7 +118,7 @@ abstract class ServerTestSupport {
         assertThat(text(result)).contains("\"error\":\"invalid_argument\"").doesNotContain("input validation failed");
     }
 
-    /** The one answer for a page or space that is missing, hidden, restricted or out of the link. */
+    /** The one answer for a page or space that is missing, hidden or restricted. */
     static void assertNotFoundOrDenied(McpSchema.CallToolResult result) {
         assertThat(result.isError()).isTrue();
         assertThat(text(result)).contains("\"error\":\"not_found_or_denied\"");

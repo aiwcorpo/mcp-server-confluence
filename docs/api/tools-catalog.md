@@ -20,7 +20,7 @@ służy drugiej linii walidacji w kodzie). Naruszenie schematu daje `invalid_arg
 
 | Narzędzie | Żądania |
 | --- | --- |
-| `search_pages` | `GET /rest/api/content/search?cql=space = "<space>" AND type = "page" AND text ~ "<słowa>"&limit=25&expand=space,version`; zawężenie linku (`space in (...)`) przed filtrami; potem resolver trafień (niżej) |
+| `search_pages` | `GET /rest/api/content/search?cql=space = "<space>" AND type = "page" AND text ~ "<słowa>"&limit=25&expand=space,version`; zawężenie do żądanej przestrzeni (`space in (...)`) przed filtrami; potem resolver trafień (niżej) |
 | resolver strony | `GET /rest/api/content/{pageId}?expand=space,version,ancestors` (jedna strona) albo `GET /rest/api/content/search?cql=id in ("..", "..") AND type = page&expand=space,version,ancestors` (trafienia), do tego `GET /rest/api/space/{key}?expand=metadata.labels` raz na przestrzeń |
 | resolver przestrzeni | `GET /rest/api/space/{key}?expand=metadata.labels` |
 | `get_page` | resolver strony, po decyzji polityki `GET /rest/api/content/{pageId}?expand=body.storage,space,version,ancestors` |

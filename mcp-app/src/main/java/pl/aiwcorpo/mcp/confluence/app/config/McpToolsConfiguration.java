@@ -17,7 +17,7 @@ import pl.aiwcorpo.mcp.platform.input.SchemaLimitedToolCallbacks;
 public class McpToolsConfiguration {
 
     @Bean
-    ToolCallbackProvider mcpTools(ConfluencePageTools pageTools) {
+    public ToolCallbackProvider mcpTools(ConfluencePageTools pageTools) {
         return SchemaLimitedToolCallbacks.of(pageTools);
     }
 }

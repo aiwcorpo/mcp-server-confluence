@@ -43,17 +43,6 @@ class GetPageToolTest extends ServerTestSupport {
     }
 
     @Test
-    void acceptsTheVirtualServerClaimsOfACallThroughALink() {
-        try (McpSyncClient client = clientWithToken(
-                user -> { reader(user); user.virtualServer("team-docs", Map.of()); }, PAT)) {
-            McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1000"));
-
-            assertThat(result.isError()).isFalse();
-            assertThat(text(result)).contains("\"id\":\"1000\"");
-        }
-    }
-
-    @Test
     void contentIncludedFromOtherPagesIsNeverReturned() {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             McpSchema.CallToolResult result = call(client, "get_page", Map.of("pageId", "1001"));

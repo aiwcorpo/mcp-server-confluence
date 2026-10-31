@@ -57,8 +57,8 @@ public class ConfluencePageTools {
 
     /**
      * The model names the space and the words, never a query: the server builds the CQL. The space is a
-     * {@code @ResourceRef}, so a missing, hidden, restricted or out-of-link space is {@code not_found_or_denied} before
-     * anything is searched. The narrowing of the link still goes into the query ({@link QueryScope}); the hits are
+     * {@code @ResourceRef}, so a missing, hidden or restricted space is {@code not_found_or_denied} before
+     * anything is searched. The requested space goes into the query as the narrowing of the scope ({@link QueryScope}); the hits are
      * filtered afterwards by their {@code @ResourceRef} component, which removes what Confluence returns beyond the space
      * and pages that are now somewhere the policy refuses.
      */
@@ -80,10 +80,6 @@ public class ConfluencePageTools {
             throw new InvalidToolArgumentException("text must contain at least one letter or digit");
         }
         QueryScope scope = policy.queryScope(ConfluenceResourceModel.SPACE_TYPE).narrowedTo(List.of(spaceKey));
-        // Confluence applies the caller's own rights, so "no grant" is not "nothing to query"; only a link that excludes the space is.
-        if (scope.linkIds().map(Set::isEmpty).orElse(false)) {
-            return new SearchResult(spaceKey, List.of());
-        }
         String cql = scope.cql(Set.of("text"))
                 .where("text", Operator.CONTAINS, words)
                 .build();

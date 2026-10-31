@@ -14,6 +14,9 @@
     </parent>
     <artifactId>mcp-app</artifactId>
     <name>mcp-confluence :: App (bootstrap)</name>
+    <properties>
+        <manifest.export.skip>false</manifest.export.skip>
+    </properties>
     <dependencies>
         <dependency><groupId>${project.groupId}</groupId><artifactId>mcp-tools</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>${project.groupId}</groupId><artifactId>mcp-integration</artifactId><version>${project.version}</version></dependency>
@@ -38,20 +41,23 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <!-- The manifest registered at the gateway is a build artefact (ManifestArtefact); -DskipTests does not skip it. -->
+            <!--
+              The manifest to register at the gateway: built from the reviewed commit and the production configuration,
+              in the ordinary build (also with -DskipTests), as target/mcp-manifest.json.
+            -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.5.0</version>
                 <executions>
                     <execution>
-                        <id>manifest-artefact</id>
+                        <id>export-manifest</id>
                         <phase>package</phase>
                         <goals><goal>java</goal></goals>
                         <configuration>
-                            <mainClass>pl.aiwcorpo.mcp.confluence.app.ManifestArtefact</mainClass>
-                            <classpathScope>test</classpathScope>
+                            <skip>${manifest.export.skip}</skip>
+                            <mainClass>pl.aiwcorpo.mcp.confluence.app.ManifestExport</mainClass>
                             <arguments><argument>${project.build.directory}/mcp-manifest.json</argument></arguments>
+                            <classpathScope>runtime</classpathScope>
                         </configuration>
                     </execution>
                 </executions>

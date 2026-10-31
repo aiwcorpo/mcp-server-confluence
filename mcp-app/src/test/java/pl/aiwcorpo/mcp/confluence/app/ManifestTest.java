@@ -50,14 +50,23 @@ class ManifestTest extends ServerTestSupport {
         return JSON.readTree(response.body());
     }
 
-    @Test
-    void theBuildArtefactEqualsTheServedManifestAndNamesNoEnvironment() throws Exception {
-        JsonNode served = manifest();
-        JsonNode artefact = JSON.readTree(java.nio.file.Files.readString(MANIFEST_FILE));
+    private static JsonNode withoutHash(JsonNode tools) {
+        JsonNode copy = tools.deepCopy();
+        copy.forEach(tool -> ((tools.jackson.databind.node.ObjectNode) tool).remove("definitionHash"));
+        return copy;
+    }
 
-        assertThat(artefact).isEqualTo(served);
-        assertThat(artefact.has("environment")).as("only the devstack profile marks a manifest as dev").isFalse();
-        assertThat(artefact.path("credential").path("acceptedTypes").toString()).isEqualTo("[\"user-secret\"]");
+    @Test
+    void theBuildManifestHasTheToolsTheServerPublishes() throws Exception {
+        JsonNode exported = JSON.readTree(ManifestExport.manifest());
+        JsonNode served = manifest();
+
+        // definitionHash is left out: it covers the accepted credential types too, which tests set to one type.
+        assertThat(withoutHash(exported.get("tools"))).as("same definitions as tools/list").isEqualTo(withoutHash(served.get("tools")));
+        assertThat(exported.get("resourceTypes")).isEqualTo(served.get("resourceTypes"));
+        assertThat(exported.get("serverId")).isEqualTo(served.get("serverId"));
+        assertThat(exported.has("environment")).as("only the devstack profile marks a manifest as dev").isFalse();
+        assertThat(exported.path("credential").path("acceptedTypes").toString()).isEqualTo("[\"user-secret\"]");
     }
 
     /** The raw {@code tools/list} result, as a client receives it. */

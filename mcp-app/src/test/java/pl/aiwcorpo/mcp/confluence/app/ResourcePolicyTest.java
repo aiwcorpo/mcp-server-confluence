@@ -6,21 +6,15 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import pl.aiwcorpo.mcp.platform.test.TestGateway;
 
 /**
  * The policy (C7) on pages and spaces: a page is judged by the space Confluence says it is in and by the labels of that
- * space, whatever the argument looks like, and every refusal looks like a missing page. A virtual server link only narrows.
+ * space, whatever the argument looks like, and every refusal looks like a missing page.
  */
 class ResourcePolicyTest extends ServerTestSupport {
-
-    private static final Consumer<TestGateway.Token> LINK_TO_ENG = user -> {
-        reader(user);
-        user.virtualServer("eng-only", Map.of("confluenceSpaces", List.of("ENG")));
-    };
 
     @BeforeEach
     void resetBackend() {
@@ -104,40 +98,11 @@ class ResourcePolicyTest extends ServerTestSupport {
     }
 
     @Test
-    void aLinkThatNarrowsToOneSpaceHidesPagesAndSpacesOutsideIt() {
-        try (McpSyncClient client = clientWithToken(LINK_TO_ENG, PAT)) {
-            McpSchema.CallToolResult missing = call(client, "get_page", Map.of("pageId", "1404"));
-            McpSchema.CallToolResult inside = call(client, "get_page", Map.of("pageId", "1000"));
-            McpSchema.CallToolResult outside = call(client, "get_page", Map.of("pageId", "4001"));
-            McpSchema.CallToolResult spaceInside = call(client, "get_space", Map.of("space", "ENG"));
-            McpSchema.CallToolResult spaceOutside = call(client, "get_space", Map.of("space", "OPS"));
-
-            assertThat(inside.isError()).isFalse();
-            assertThat(spaceInside.isError()).isFalse();
-            assertNotFoundOrDenied(outside);
-            assertThat(text(outside)).isEqualTo(text(missing)).doesNotContain("Restart the job");
-            assertThat(spaceOutside.isError()).isTrue();
-        }
-    }
-
-    @Test
-    void aReaderWithoutAScopeGroupReadsAPageOfTheLinkedSpaceThroughTheLink() {
-        try (McpSyncClient client = clientWithToken(LINK_TO_ENG, PAT)) {
+    void aReaderWithoutAScopeGroupReadsPagesOfOpenSpaces() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
             assertThat(call(client, "get_page", Map.of("pageId", "1000")).isError()).isFalse();
-            assertNotFoundOrDenied(call(client, "get_page", Map.of("pageId", "4001")));
+            assertThat(call(client, "get_page", Map.of("pageId", "4001")).isError()).isFalse();
         }
-    }
-
-    @Test
-    void searchingOutsideTheLinkIsRefusedBeforeAnythingIsSearched() {
-        try (McpSyncClient client = clientWithToken(LINK_TO_ENG, PAT)) {
-            McpSchema.CallToolResult missing = call(client, "search_pages", Map.of("space", "NOSUCH", "text", "runbook"));
-            McpSchema.CallToolResult outside = call(client, "search_pages", Map.of("space", "OPS", "text", "runbook"));
-
-            assertThat(text(outside)).as("a space outside the link is refused like a missing one").contains("\"error\":\"not_found_or_denied\"");
-            assertThat(text(outside)).as("same answer whether the space exists or not").isEqualTo(text(missing));
-        }
-        assertThat(BACKEND.authorizations()).isEmpty();
     }
 
     @Test
@@ -149,18 +114,6 @@ class ResourcePolicyTest extends ServerTestSupport {
             assertThat(text(result)).as("open pages stay").contains("\"id\":\"1000\"", "\"id\":\"1001\"")
                     .as("indexed under ENG, now in the restricted HR").doesNotContain("\"id\":\"2000\"", "\"id\":\"2002\"",
                             "Bonus rules", "Salaries");
-        }
-    }
-
-    @Test
-    void withALinkTheSearchAlsoDropsAHitThatMovedOutOfTheLinkedSpace() {
-        try (McpSyncClient everything = clientWithCredential(PAT);
-             McpSyncClient linked = clientWithToken(LINK_TO_ENG, PAT)) {
-            McpSchema.CallToolResult open = call(everything, "search_pages", Map.of("space", "ENG", "text", "release"));
-            McpSchema.CallToolResult narrowed = call(linked, "search_pages", Map.of("space", "ENG", "text", "release"));
-
-            assertThat(text(open)).as("moved to OPS, which is open").contains("\"id\":\"4002\"");
-            assertThat(text(narrowed)).contains("\"id\":\"1000\"").doesNotContain("\"id\":\"4002\"", "Operations home");
         }
     }
 
