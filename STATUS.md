@@ -6,6 +6,8 @@ M3: osiągnięty (2026-10-28) - starter 3.0.0-beta-4 (kontrakty 3.1.0): `@ToolTi
 
 M4: osiągnięty (2026-10-29) - starter 3.0.0-beta-9 (kontrakty 4.1.0), CQL ze `StructuredQuery` z pól normatywnych, stały tekst `not_found_or_denied`, typ `user-secret` jako jedyny i domyślny, manifest jako artefakt budowy (`mcp-app/target/mcp-manifest.json`), 79 testów.
 
+M5: kod gotowy (2026-10-31) - starter 3.0.0-beta-10 (kontrakty 5.1.0), bez linków wirtualnego serwera, manifest z `ManifestExport` w fazie package, CI przez `ci/run.sh`, 78 przypadków testowych (commit 021f874, obraz `mcp-server-confluence:m5-021f874`). Dowód z runnera CI: brak.
+
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni).
 
 ## M3 (2026-10-28): starter beta-2, polityki zasobów
@@ -242,3 +244,15 @@ Kamienie: (1) beta-7: StructuredQuery, stała odmowa, typ poświadczenia (d43fe1
 - Testy: `CredentialTypeTest` (brak nagłówka typu, zła pisownia, zero żądań), zapis bez grantu = zero żądań do Confluence.
 - Nie sprawdzone: manifest z `environment: dev` w profilu `devstack` (pokrywa to test startera).
 Obraz: mcp-server-confluence:m4-bb3289e
+
+## M5 (2026-10-31): starter beta-10, kontrakty 5.1.0
+
+- `mcp-platform.version` 3.0.0-beta-10, README (wersje, tabela testów, sekcja CI) poprawione.
+- Usunięte: `user.virtualServer(...)` i `LINK_TO_ENG` w testach, cztery testy zawężenia linkiem (`aLinkThatNarrows...`, `searchingOutsideTheLink...`, `withALinkTheSearch...`, `acceptsTheVirtualServerClaims...`), martwa gałąź `scope.linkIds()` w `search_pages`. Test czytelnika bez grupy zakresu czyta teraz zwykłą ścieżką (strony ENG i OPS). Zakres narzędzi bez zmian: `search_pages` dalej zawęża `narrowedTo(space)`, `create_page` dalej wymaga zakresu przestrzeni z grantu.
+- `GatewayOnlyAccessTest.aTokenWithTheClaimsOfTheRemovedVirtualServersIsRejected`: `extraClaim("vs", ...)` i `extraClaim("vsc", ...)` -> 401, backend bez żądania.
+- Audyt: serwer nie miał pola `virtualServer` ani powodu `link_scope` w kodzie, dokumentach i alertach (grep pusty).
+- Manifest: `ManifestExport` (main) w fazie `package`, `manifest.export.skip=false`, `mcp-app/target/mcp-manifest.json`; zastępuje testową klasę `ManifestArtefact` (start serwera w `dev` za `TestGateway`). `ManifestTest` porównuje `ManifestExport.manifest()` z `tools/list`.
+- CI: `ci/run.sh` (verify, hygiene, image), `Makefile`, `.gitlab-ci.yml`, `Jenkinsfile`, `.github/workflows/ci.yml`, `.ci/settings*.xml` skopiowane z szablonu (444f826); MR/PR bez sekretów i gniazda Dockera, 0 testów to błąd, nieznany krok to kod 2.
+- A10-M1: `DevProfileLoopbackTest` używa `DevProfileGuardAssertions` (bez hostowego startu z `--server.address`); sprawdzone z `INVOCATION_ID=ci KUBERNETES_SERVICE_HOST=10.0.0.1`. Żadnych wycięć bramek.
+- Dowód lokalny: `ci/run.sh verify` 78 przypadków, 0 pominiętych; manifest: `serverId mcp-confluence`, 4 narzędzia, `acceptedTypes [user-secret]`, bez `environment`. Obraz zbudowany z Dockerfile repo, nie wdrażany.
+- Nie sprawdzone: testy z paczką `mcp-policies/out/repository-m5` (testy idą na paczce przykładowej kontraktów); uruchomienie w kontenerze runnera i `ci/run.sh image` na `main` z runnera.
