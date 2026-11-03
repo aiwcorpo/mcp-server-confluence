@@ -256,6 +256,10 @@ final class StubBackend {
         }
         ObjectNode response = JSON.createObjectNode();
         ArrayNode results = response.putArray("results");
+        if ("1700".equals(id)) {
+            // A confused backend: a page that is not below 1700 comes back among its children.
+            results.add(contentNode(FIXTURES.get("1000"), expand));
+        }
         for (Fixture fixture : FIXTURES.values()) {
             if ("page".equals(fixture.type()) && !fixture.ancestors().isEmpty()
                     && fixture.ancestors().getLast().equals(id)) {
@@ -398,6 +402,12 @@ final class StubBackend {
     /** Stored versions of 1001: 2 exists, the rest do not. */
     private void historical(HttpExchange exchange, String id, String version, List<String> expand) throws IOException {
         Fixture current = FIXTURES.get(id);
+        if ("1700".equals(id) && "1".equals(version)) {
+            // A confused backend: the content behind the id is another page.
+            respond(exchange, 200, contentNode(new Fixture("1000", "page", "ENG", "Engineering home", 1, List.of(),
+                    "<p>other</p>", null), expand).put("status", "historical").toString());
+            return;
+        }
         if (current == null || !"2".equals(version) || !"1001".equals(id)) {
             respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + id + "}"));
             return;
@@ -431,7 +441,10 @@ final class StubBackend {
                 ObjectNode listing = space.putObject("metadata").putObject("labels");
                 ArrayNode labelResults = listing.putArray("results");
                 labels.forEach(label -> labelResults.addObject().put("prefix", "global").put("name", label));
-                listing.put("start", 0).put("limit", 200).put("size", labels.size());
+                listing.put("start", 0).put("limit", "FULL".equals(key) ? 2 : 200).put("size", labels.size());
+                if ("MANY".equals(key)) {
+                    listing.putObject("_links").put("next", "/rest/api/space/MANY?start=200");
+                }
             }
         }
         window(exchange, response, query, "/rest/api/space");
@@ -446,6 +459,10 @@ final class StubBackend {
         }
         if ("Existing".equals(request.path("title").asString())) {
             respond(exchange, 400, error(400, "A page already exists with the title Existing"));
+            return;
+        }
+        if ("1700".equals(id)) {
+            respond(exchange, 409, error(409, "Concurrent edit"));
             return;
         }
         if (request.path("version").path("number").asInt() != fixture.version() + 1) {
@@ -533,6 +550,10 @@ final class StubBackend {
                     results.add(contentNode(fixture, expand));
                 }
             }
+        } else if (cql.contains("space in (\"BIG\")")) {
+            FIXTURES.values().stream().filter(f -> "BIG".equals(f.space())).forEach(f -> results.add(contentNode(f, expand)));
+            window(exchange, response, query, "/rest/api/content/search");
+            return;
         } else if (cql.contains("text ~ \"FAIL\"")) {
             results.add(contentNode(new Fixture("1500", "page", "FAIL", "Failing", 1, List.of(), null, null), expand));
         } else {
@@ -628,6 +649,7 @@ final class StubBackend {
         labels.put("MANY", List.of("a"));
         labels.put("UNCL", null);
         labels.put("FULL", List.of("a", "b"));
+        labels.put("BIG", List.of());
         for (String ordinary : List.of("SECRET", "REDIR", "BAD", "FAIL")) {
             labels.put(ordinary, List.of());
         }
@@ -659,8 +681,13 @@ final class StubBackend {
                 new Fixture("4001", "page", "OPS", "Runbook", 4, List.of("4002"), "<p>Restart the job.</p>", null),
                 new Fixture("4002", "page", "OPS", "Operations home", 2, List.of(), "<p>Operations.</p>", null),
                 new Fixture("4004", "page", "FULL", "Full label page", 1, List.of(), "<p>full</p>", null),
+                new Fixture("1700", "page", "ENG", "Contended", 5, List.of("1000"), "<p>Edited by two people.</p>", null),
                 new Fixture("4003", "page", "MANY", "Many labels", 1, List.of(), "<p>unclear</p>", null))) {
             fixtures.put(fixture.id(), fixture);
+        }
+        for (int i = 0; i < 30; i++) {
+            String id = String.valueOf(9000 + i);
+            fixtures.put(id, new Fixture(id, "page", "BIG", "Bulk " + i, 1, List.of(), "<p>bulk " + i + "</p>", null));
         }
         return fixtures;
     }

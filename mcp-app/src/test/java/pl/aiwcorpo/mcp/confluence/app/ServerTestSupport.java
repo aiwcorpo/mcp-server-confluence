@@ -89,6 +89,9 @@ abstract class ServerTestSupport {
 
     private boolean reports(Capabilities.State expected, String version) {
         Capabilities now = capabilities.of("confluence");
+        if (expected == Capabilities.State.UNAVAILABLE) {
+            return now.state() == expected;
+        }
         return now.state() == expected && now.backendVersion() != null && now.backendVersion().startsWith(version);
     }
 

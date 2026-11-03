@@ -162,9 +162,9 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     @Override
     public Slice<PageSummary> listChildPages(String pageId, int start, int limit) {
         SearchResponse response = send(() -> getJson(CONTENT + "/{id}/child/page", Map.of("id", pageId),
-                query("start", start, "limit", limit, "expand", SUMMARY_EXPAND), SearchResponse.class),
+                query("start", start, "limit", limit, "expand", RECORD_EXPAND), SearchResponse.class),
                 hidden(() -> null));
-        return pageSlice(response, start);
+        return pageSlice(response, start, content -> pageId.equals(lastOf(content.ancestorIds())));
     }
 
     @Override
@@ -182,6 +182,12 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     private static Slice<PageSummary> pageSlice(SearchResponse response, int start) {
+        return pageSlice(response, start, content -> true);
+    }
+
+    /** {@code belongs} drops what is not a child of the page asked about, whatever the endpoint returned. */
+    private static Slice<PageSummary> pageSlice(SearchResponse response, int start,
+            java.util.function.Predicate<ContentResponse> belongs) {
         if (response == null || response.results() == null) {
             return Slice.empty();
         }
@@ -189,9 +195,14 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
                 .map(ContentResponse::withId)
                 .filter(ContentResponse::isCurrentPage)
                 .filter(ContentResponse::isInGlobalSpace)
+                .filter(belongs)
                 .map(ContentResponse::toSummary)
                 .toList();
         return new Slice<>(pages, nextStart(start, response.results().size(), response._links()));
+    }
+
+    private static String lastOf(List<String> ids) {
+        return ids.isEmpty() ? null : ids.getLast();
     }
 
     private static Integer nextStart(int start, int returned, LinksResponse links) {
@@ -300,8 +311,8 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         if (response == null) {
             return Optional.empty();
         }
-        // A stored version has status "historical"; only the type and the space matter here.
-        return Optional.of(response.withId()).filter(ContentResponse::isPage).filter(ContentResponse::isInGlobalSpace)
+        // A stored version has status "historical"; only the type, the id asked for and the space matter here.
+        return Optional.of(response.withId()).filter(content -> pageId.equals(content.id())).filter(ContentResponse::isPage).filter(ContentResponse::isInGlobalSpace)
                 .map(ContentResponse::toPage);
     }
 
