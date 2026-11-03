@@ -39,6 +39,10 @@ aiwcorpo:
           key-id: ${MCP_POLICY_KEY_ID:}
           public-key-file: ${MCP_POLICY_PUBLIC_KEY_FILE:}
         state-dir: ${MCP_POLICY_STATE_DIR:}
+      # HMAC key of list cursors (Base64, at least 32 bytes). Every instance needs the same one; without it each process
+      # draws its own, so a cursor does not survive a restart or a move to another instance.
+      paging:
+        cursor-key: ${MCP_CURSOR_KEY:}
       # Description of this server for the registry (GET /mcp-manifest, C6); the tool entries come from the code.
       manifest:
         version: '@project.version@'
@@ -54,6 +58,9 @@ confluence:
     max-response-size: 1MB
     # Plain http outside 'dev' only for the mocks of mcp-platform-dev; never in a real deployment.
     allow-plain-http: ${MCP_CONFLUENCE_ALLOW_PLAIN_HTTP:false}
+    # Writes only on a release the version probe knows (8.5 up to 10.x). true also allows them when Confluence hides its
+    # version or runs a newer one; the operator then answers for the behaviour of the REST API there.
+    allow-writes-on-unknown-version: ${MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION:false}
 
 management:
   endpoints:

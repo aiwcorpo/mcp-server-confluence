@@ -11,7 +11,9 @@ Niezmienniki platformy (`mcp-platform-plan/00-overview.md`) i to, gdzie serwer j
 | "Nie istnieje" i "brak dostępu" -> `not_found_or_denied` | 404 i 403 Confluence, treść inna niż strona, przestrzeń osobista i rodzic z innej przestrzeni dają ten sam błąd i tekst. Testy: `missingAndForbiddenPagesLookTheSame`, `blogPostsAndPersonalSpacesAreNotFound`, `aParentFromAnotherSpaceIsNotFoundAndNothingIsCreated` |
 | Wynik tylko z zasobu wskazanego w argumentach | `get_page` czyta `body.storage` (nigdy `body.view`/`export_view`, w których Confluence rozwija include i excerpt-include treścią innych stron i przestrzeni); makra spoza listy z treścią lokalną są usuwane z parametrami. Test: `contentIncludedFromOtherPagesIsNeverReturned`, `StorageFormatTest` |
 | Bez języka zapytań od modelu | CQL składa `Cql`: stałe klauzule, klucz przestrzeni z wzorca kontraktu, z `text` tylko słowa. Test: `cqlInTheTextCannotWidenTheSearch` |
-| Zapis nie wprowadza markup | `create_page` escapuje cały tekst do storage; makro ani HTML z argumentu nie powstanie. Test: `createsThePageUnderTheParentWithTheBodyEscaped` |
+| Zapis nie wprowadza markup | `create_page`, `update_page`, `add_comment` escapują cały tekst do storage; makro ani HTML z argumentu nie powstanie. Test: `createsThePageUnderTheParentWithTheBodyEscaped` |
+| Id podrzędne tylko w ocenionym obiekcie | komentarz, załącznik, wersja i strona podrzędna są sprawdzane względem strony ocenionej przez politykę (`container.id`, przodkowie, `id` odpowiedzi); niezgodność to `not_found_or_denied` albo pominięcie. Testy: `anAttachmentOfAnotherPageIsNotFoundAndHiddenPagesStayHidden`, `contentThatIsNotBelowTheJudgedObjectIsNeverHandedOut`, `aReplyToACommentOfAnotherPageOrAMissingOneIsNotFoundAndNothingIsPosted` |
+| Zapis tylko na sprawdzonej wersji | bramka wersji (sonda): poza 8.5-10.x tylko odczyt; `update_page` z `expectedVersion`, `replace` tylko dla stron z samych akapitów. Testy: `VersionCoverageTest`, `WriteToolsTest` |
 | Audyt z `requestId` | jedno zdarzenie C8 `tool_call` na wywołanie (logger `pl.aiwcorpo.mcp.audit`, stdout, czysta linia JSON), `requestId` z JWT |
 
 ## Zasady dla kodu

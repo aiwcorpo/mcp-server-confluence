@@ -2,7 +2,7 @@
 # A pull request runs unreviewed code: its job holds no secret (MCP_MAVEN_REPOSITORY_URL is a repository variable, not a
 # secret, and the registry is read anonymously) and mounts no Docker socket. The main branch gets the registry
 # credentials (secrets MCP_MAVEN_REPOSITORY_USER and MCP_MAVEN_REPOSITORY_PASSWORD, kept in the environment ci-main so that
-# a pull request cannot read them) and builds the image on the runner.
+# a pull request cannot read them) and builds the image on the runner. Every action is pinned to a full commit SHA.
 name: ci
 on:
   push:
@@ -10,22 +10,34 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   verify-pull-request:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
     container:
       image: maven:3.9.12-eclipse-temurin-25
     env:
       MCP_MAVEN_REPOSITORY_URL: ${{ vars.MCP_MAVEN_REPOSITORY_URL }}
     steps:
+      # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: ci/run.sh verify
   verify-main:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     environment: ci-main
+    permissions:
+      contents: read
     container:
       image: maven:3.9.12-eclipse-temurin-25
     env:
@@ -33,10 +45,14 @@ jobs:
       MCP_MAVEN_REPOSITORY_USER: ${{ secrets.MCP_MAVEN_REPOSITORY_USER }}
       MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MCP_MAVEN_REPOSITORY_PASSWORD }}
     steps:
+      # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: ci/run.sh verify
-      - uses: actions/upload-artifact@v4
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: build
           path: |
@@ -45,10 +61,17 @@ jobs:
   image:
     needs: verify-main
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
+      # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - uses: actions/download-artifact@v4
+        with:
+          persist-credentials: false
+      # actions/download-artifact v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
           path: mcp-app/target

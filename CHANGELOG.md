@@ -1,0 +1,13 @@
+# Changelog
+
+Format: wersje SemVer, od najnowszej. Do pierwszego wydania publicznego obowiązuje `0.1.0-SNAPSHOT`.
+
+## Niewydane
+
+- Starter 3.0.0-beta-12, kontrakty 6.2.1.
+- 17 narzędzi (było 4): listy stronicowane kursorem (`list_pages`, `list_child_pages`, `list_spaces`), `get_page_by_title`,
+  `get_page_version`, komentarze, etykiety, załączniki tekstowe, `update_page` z `expectedVersion`, `add_comment`, `add_label`,
+  `delete_page` (`DESTRUCTIVE`). `search_pages` ma filtry `title`, `label`, `orderBy` i kursor, wynik w `PagedResult`.
+- Sonda wersji (`server-information`, manifest aplikacji): 8.5 do 10.x wspierane, inne wersje tylko do odczytu.
+- Sprawdzenie, że id podrzędne należy do ocenionej strony.
+- Fixture sondy dla 8.5, 9.2, 10.2, 11.0, 7.19; Apache-2.0, `SECURITY.md`, `CONTRIBUTING.md`, release workflow (obraz ghcr.io, SBOM).

@@ -12,12 +12,66 @@
 #   ci/run.sh image           docker build of the jar that verify made; main branch only, needs a Docker daemon
 #
 # CI_TEST_MODULES (default: mcp-application mcp-integration mcp-tools mcp-app) lists the modules that must have run tests, CI_APP_MIN_TESTS the
-# floor for mcp-app, CI_IMAGE_TAG_PREFIX (default m5) the prefix of the image tag mcp-server-<system>:<prefix>-<sha7>.
+# floor for mcp-app, CI_IMAGE_TAG_PREFIX (default m6) the prefix of the image tag mcp-server-<system>:<prefix>-<sha7>.
 # Any other argument is an error (exit 2). The tests need no container runtime, so a merge request pipeline mounts no
 # Docker socket and holds no secret: without the credentials of the registry the build reads it anonymously.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
+
+java_major() {
+  "$1" -XshowSettings:properties -version 2>&1 | sed -n 's/.*java.specification.version = //p' | head -n 1
+}
+
+jdk_is_25() {
+  local major
+  [[ -x "$1/bin/java" ]] || return 1
+  major="$(java_major "$1/bin/java" 2>/dev/null || true)"
+  [[ -n "$major" ]] && [[ "${major%%.*}" -ge 25 ]] 2>/dev/null
+}
+
+# The build needs Java 25. Keeps the current JDK when it is new enough, otherwise looks in the usual places (macOS
+# java_home, Homebrew, /usr/lib/jvm, SDKMAN, IntelliJ); JAVA_HOME set to a JDK 25 skips the search.
+select_jdk() {
+  local candidate
+  if [[ -n "${JAVA_HOME:-}" ]] && jdk_is_25 "$JAVA_HOME"; then
+    return 0
+  fi
+  if command -v java >/dev/null 2>&1; then
+    candidate="$(dirname "$(dirname "$(command -v java)")")"
+    if jdk_is_25 "$candidate"; then
+      export JAVA_HOME="$candidate"
+      return 0
+    fi
+  fi
+  candidate=""
+  if [[ -x /usr/libexec/java_home ]]; then
+    candidate="$(/usr/libexec/java_home -v 25 2>/dev/null || true)"
+  fi
+  if [[ -n "$candidate" ]] && jdk_is_25 "$candidate"; then
+    export JAVA_HOME="$candidate"
+    return 0
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    candidate="$(brew --prefix openjdk@25 2>/dev/null || true)"
+    for candidate in "$candidate/libexec/openjdk.jdk/Contents/Home" "$candidate/libexec"; do
+      if jdk_is_25 "$candidate"; then
+        export JAVA_HOME="$candidate"
+        return 0
+      fi
+    done
+  fi
+  for candidate in /usr/lib/jvm/*25* "$HOME"/.sdkman/candidates/java/25* "$HOME"/.jdks/*25*; do
+    if jdk_is_25 "$candidate"; then
+      export JAVA_HOME="$candidate"
+      return 0
+    fi
+  done
+  echo "ci/run.sh: JDK 25 not found; set JAVA_HOME to a JDK 25 or use the maven:3.9.12-eclipse-temurin-25 image" >&2
+  return 1
+}
+
+select_jdk
 
 # Maven settings file for the registry: with credentials only when the pipeline holds them (main), anonymous otherwise.
 maven_settings() {
@@ -109,10 +163,6 @@ require_manifest() {
 }
 
 verify() {
-  if [[ -z "${JAVA_HOME:-}" ]] && ! command -v java >/dev/null; then
-    echo "ci/run.sh: no JDK; set JAVA_HOME to a JDK 25 or use the maven:3.9.12-eclipse-temurin-25 image" >&2
-    exit 1
-  fi
   hygiene
   mvnw clean verify
   require_tests_ran
@@ -129,7 +179,7 @@ image() {
     echo "ci/run.sh image: mcp-app/target/mcp-confluence.jar is missing; run ci/run.sh verify first" >&2
     exit 1
   fi
-  local tag="mcp-server-confluence:${CI_IMAGE_TAG_PREFIX:-m5}-$(git rev-parse --short=7 HEAD)"
+  local tag="mcp-server-confluence:${CI_IMAGE_TAG_PREFIX:-m6}-$(git rev-parse --short=7 HEAD)"
   docker build -t "$tag" .
   echo "ci/run.sh: built $tag"
 }
