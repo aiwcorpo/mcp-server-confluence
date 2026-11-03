@@ -7,7 +7,7 @@
 # MCP_CONTRACTS_READ_TOKEN (read:packages only) and variable MCP_CONTRACTS_READ_USER, repository-level on purpose so that job
 # verify, which has no environment, can read the platform packages.
 #
-# Three jobs: verify runs the tests with contents: read and the read-only token and hands over the jar and the manifest;
+# Four jobs: verify runs the tests with contents: read and the read-only token and hands over the jar and the manifest;
 # publish has packages: write, no build cache, and the write token only in the environment of the push step; sbom has contents: read and
 # packages: read and runs Maven; release has contents: write, runs no build tool and holds the token only in the step that
 # creates the GitHub Release.
