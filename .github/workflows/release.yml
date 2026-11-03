@@ -8,8 +8,9 @@
 # verify, which has no environment, can read the platform packages.
 #
 # Three jobs: verify runs the tests with contents: read and the read-only token and hands over the jar and the manifest;
-# publish has packages: write, no build cache, and the write token only in the environment of the push step; release has
-# contents: write and uses it only in the step that creates the GitHub Release.
+# publish has packages: write, no build cache, and the write token only in the environment of the push step; sbom has contents: read and
+# packages: read and runs Maven; release has contents: write, runs no build tool and holds the token only in the step that
+# creates the GitHub Release.
 name: release
 
 on:
@@ -86,18 +87,13 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release:
+  sbom:
     needs: publish
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    environment: release
     permissions:
-      contents: write
+      contents: read
       packages: read
-    env:
-      MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-starter-lib
-      MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
-      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
     steps:
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -108,17 +104,43 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - name: SBOM (CycloneDX)
+        run: ./mvnw -B -s .ci/settings.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
+        env:
+          MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-starter-lib
+          MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
+          MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sbom
+          path: |
+            target/bom.json
+            target/bom.xml
+
+  release:
+    needs: sbom
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    steps:
       # actions/download-artifact v4.3.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: build
-          path: mcp-app/target
-      - name: SBOM (CycloneDX)
-        run: ./mvnw -B -s .ci/settings.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
+          path: files
+      # actions/download-artifact v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: sbom
+          path: files
       - name: Attach manifest and SBOM to the GitHub Release
         run: |
           flags=()
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" "${flags[@]}" mcp-app/target/mcp-manifest.json target/bom.json target/bom.xml
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" "${flags[@]}" files/mcp-manifest.json files/bom.json files/bom.xml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
