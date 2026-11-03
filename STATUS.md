@@ -8,6 +8,15 @@ M4: osiągnięty (2026-10-29) - starter 3.0.0-beta-9 (kontrakty 4.1.0), CQL ze `
 
 M5: kod gotowy (2026-10-31) - starter 3.0.0-beta-10 (kontrakty 5.1.0), bez linków wirtualnego serwera, manifest z `ManifestExport` w fazie package, CI przez `ci/run.sh`, 78 przypadków testowych (commit 021f874, obraz `mcp-server-confluence:m5-021f874`). Dowód z runnera CI: brak.
 
+M6 (pełny serwer, 2026-11-03): kod gotowy - starter 3.0.0-beta-13 (kontrakty 6.2.1), 17 narzędzi dla Confluence Data Center 8.5 do 10.x (README, "Narzędzia"), sonda wersji z trybem `degraded` (zapis tylko na wersji przetestowanej), kursory i `PagedResult` na listach, `update_page` z `expectedVersion`, sprawdzanie przynależności id podrzędnych (komentarz, załącznik, wersja, dziecko) do ocenionej strony, StubBackend z fixture sondy dla 8.5, 9.2, 10.2, 11.0, 7.19; 124 testy (8 + 12 + 1 + 103). Porządki do wydania: LICENSE, NOTICE, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md, workflowy z akcjami przypiętymi do SHA, release workflow (obraz ghcr.io + SBOM). Dowód z runnera CI: brak.
+
+Otwarte po M6:
+- Kształty odpowiedzi bez nagrania z instancji (lista w `docs/api/tools-catalog.md`): komentarze (lokalizacja, rodzic), `_links.download`, `ancestors` wersji historycznej, powtórzone `spaceKey` w `/rest/api/space`. Sprawdzić przy pierwszym uruchomieniu u klienta (README).
+- `server-information` bywa za logowaniem; sonda wtedy czyta manifest aplikacji; gdy oba są zablokowane, zapis wymaga `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true`.
+- Wpis `proposed` do mcp-contracts (pole CQL `ancestor`, zakres dat, Basic i Cloud) nie został dopisany: zapis w cudzym repozytorium został zablokowany; treść jest w raporcie ws-04 do dopisania przez koordynatora.
+- Wersja projektu zostaje `0.1.0-SNAPSHOT` do pierwszego wydania; release workflow wymaga repozytorium zdalnego i dwóch rejestrów (starter i kontrakty), czego nie ma.
+- `delete_page` nie ma grantu w przykładowej paczce kontraktów (test: `access_denied`); polityki napisze ws-09.
+
 M1 według definicji koordynatora (brief ws-04 nie ma kamieni).
 
 ## M3 (2026-10-28): starter beta-2, polityki zasobów

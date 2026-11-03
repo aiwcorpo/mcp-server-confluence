@@ -1,7 +1,7 @@
 # mcp-confluence: serwer MCP dla Confluence Data Center
 
 Serwer MCP dla systemu `confluence` (Confluence Data Center, REST API v1 `/rest/api/...`), zbudowany na
-`mcp-platform-starter` 3.0.0-beta-12 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
+`mcp-platform-starter` 3.0.0-beta-13 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
 6.2.1). Jest produktem do wdrożenia obok gateway'a platformy MCP, nie biblioteką: stoi wyłącznie za gateway'em, przyjmuje ruch
 tylko po mTLS z wewnętrznym JWT gateway'a (C2), a do Confluence woła z osobistym tokenem dostępu (PAT) użytkownika,
 który gateway dołącza do każdego żądania (C3). Bez poprawnego JWT odpowiada 401, nie ma trybu anonimowego.
@@ -75,7 +75,7 @@ Argumenty i wyniki (pełny rejestr w `docs/api/tools-catalog.md`):
 - Wyszukiwanie: model podaje `space` i filtry `text`, `title`, `label`, `orderBy` (`lastmodified`, `created`, `title`), nigdy
   zapytania. CQL składa `StructuredQuery`: warunki w jednym nawiasie, zakres przestrzeni po nim. Wymagany jest co najmniej jeden filtr.
 - Listy (`search_pages`, `list_pages`, `list_child_pages`, `list_spaces`, `list_comments`, `list_attachments`) zwracają
-  `PagedResult`: `items` (do 25), `nextCursor`, `truncated`, `omitted`; bez `total`. Kursor jest podpisany (HMAC), związany z
+  `PagedResult`: `items` (do 25), `nextCursor`, `truncated`, `omitted`; bez `total`. Kursor jest podpisany i zaszyfrowany (beta-13), związany z
   użytkownikiem, narzędziem i argumentami, ważny 15 minut; obcy, zmieniony albo przeterminowany to ten sam `invalid_argument`.
   Strona po filtrze polityki może być krótsza niż 25 i mieć `nextCursor`.
 - Tekst z Confluence (tytuły, treść, komentarze, autor, nazwy etykiet i załączników) jest w wynikach `untrusted-data`.
@@ -349,6 +349,6 @@ czytany anonimowo (`.ci/settings-anonymous.xml`). Dane dostępu (`MCP_MAVEN_REPO
 zmienne Protected i Masked, w Jenkinsie poświadczenie `mcp-maven-registry`) widzi tylko gałąź `main`, na której działa też
 krok `image` (runner z gniazdem Dockera; w GitLabie tag `docker-socket` musi należeć do runnera chronionego (protected),
 inaczej gniazdo trafiłoby w ręce merge requestu; w GitHubie sekrety są w Environment `ci-main`). Moduły z wymaganymi
-testami: `CI_TEST_MODULES` (domyślnie `mcp-application mcp-integration mcp-tools mcp-app`), dolna granica dla `mcp-app`: `CI_APP_MIN_TESTS` (20).
+testami: `CI_TEST_MODULES` (domyślnie `mcp-application mcp-integration mcp-tools mcp-app`), dolna granica dla `mcp-app`: `CI_APP_MIN_TESTS` (80).
 Rejestracja manifestu w gateway'u (`PUT` z certyfikatem `mcp-registry-ci-mcp-confluence`) jest osobnym krokiem pipeline'u
 serwera, bo wymaga sekretu, którego repo nie zawiera.
