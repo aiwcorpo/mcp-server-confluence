@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<manifest xmlns="http://atlassian.com/applinks/manifest">
+  <id>3f1a2b4c-0000-4000-8000-000000000102</id>
+  <name>Confluence</name>
+  <typeId>confluence</typeId>
+  <version>10.2.1</version>
+  <buildNumber>10020</buildNumber>
+</manifest>

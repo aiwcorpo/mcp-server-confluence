@@ -10,6 +10,10 @@ M5: kod gotowy (2026-10-31) - starter 3.0.0-beta-10 (kontrakty 5.1.0), bez link�
 
 M6 (pełny serwer, 2026-11-03): kod gotowy - starter 3.0.0-beta-13 (kontrakty 6.2.1), 17 narzędzi dla Confluence Data Center 8.5 do 10.x (README, "Narzędzia"), sonda wersji z trybem `degraded` (zapis tylko na wersji przetestowanej), kursory i `PagedResult` na listach, `update_page` z `expectedVersion`, sprawdzanie przynależności id podrzędnych (komentarz, załącznik, wersja, dziecko) do ocenionej strony, StubBackend z fixture sondy dla 8.5, 9.2, 10.2, 11.0, 7.19; 124 testy (8 + 12 + 1 + 103). Porządki do wydania: LICENSE, NOTICE, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md, workflowy z akcjami przypiętymi do SHA, release workflow (obraz ghcr.io + SBOM). Dowód z runnera CI: brak.
 
+Poprawki z przeglądu (Z-1 do Z-9): `PageFiller` w czterech listach, flaga zapisu tylko dla `unavailable`, sonda przechodzi do manifestu przy 302, obrazy CI po digeście, `packages: read` w PR na GitHubie, ścieżka pobrania bez segmentów kropkowych, `truncated` w `list_labels`, okno 10 komentarzy po 4000 znaków, komentarz bez `container` odrzucany.
+
+Do zebrania przez koordynatora jako propozycja CC (nie dopisane do mcp-contracts): wyszukiwanie `content/search` bez `type = page` zwraca też komentarze, załączniki i blogi, które serwer odrzuca po odpowiedzi (okna są częściej puste). `type` nie jest polem warunku `StructuredQuery`; potrzebne albo stałe `type = page` w rendererze CQL startera, albo pole `type` w liście normatywnej (kontrakt query-rendering).
+
 Otwarte po M6:
 - Kształty odpowiedzi bez nagrania z instancji (lista w `docs/api/tools-catalog.md`): komentarze (lokalizacja, rodzic), `_links.download`, `ancestors` wersji historycznej, powtórzone `spaceKey` w `/rest/api/space`. Sprawdzić przy pierwszym uruchomieniu u klienta (README).
 - `server-information` bywa za logowaniem; sonda wtedy czyta manifest aplikacji; gdy oba są zablokowane, zapis wymaga `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true`.

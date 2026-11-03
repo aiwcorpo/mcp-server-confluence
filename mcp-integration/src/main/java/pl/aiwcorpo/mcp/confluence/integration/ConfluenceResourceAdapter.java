@@ -94,7 +94,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     static final int MAX_PAGE_TEXT = 50_000;
 
     /** Size limit of one comment handed to the model. */
-    static final int MAX_COMMENT_TEXT = 10_000;
+    static final int MAX_COMMENT_TEXT = 4_000;
 
     /** Attachments larger than this are not downloaded; the model gets the reason instead. */
     static final long MAX_ATTACHMENT_BYTES = 200_000;
@@ -353,7 +353,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         }
         List<Comment> comments = response.results().stream().map(ContentResponse::withId)
                 .filter(content -> "comment".equals(content.type()))
-                .map(content -> content.toComment(pageId)).toList();
+                .map(content -> content.toComment(null)).toList();
         return new Slice<>(comments, nextStart(start, response.results().size(), response._links()));
     }
 
@@ -382,15 +382,18 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @Override
-    public List<String> listLabels(String pageId) {
+    public Slice<String> listLabels(String pageId) {
         LabelListResponse response = send(() -> getJson(CONTENT + "/{id}/label", Map.of("id", pageId),
                 query("limit", LABEL_LIST_LIMIT), LabelListResponse.class), hidden(() -> null));
         if (response == null || response.results() == null) {
-            return List.of();
+            return Slice.empty();
         }
-        return response.results().stream().filter(label -> label.name() != null)
+        List<String> names = response.results().stream().filter(label -> label.name() != null)
                 .filter(label -> label.prefix() == null || "global".equals(label.prefix()))
                 .map(LabelResponse::name).toList();
+        boolean more = response.results().size() >= LABEL_LIST_LIMIT
+                || (response._links() != null && response._links().next() != null);
+        return new Slice<>(names, more ? response.results().size() : null);
     }
 
     @Override
@@ -428,7 +431,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         }
         String download = content.links() == null ? null : content.links().download();
         if (download == null || !DOWNLOAD_PATH.matcher(download).matches()
-                || !download.startsWith("/download/attachments/" + pageId + "/")) {
+                || !download.startsWith("/download/attachments/" + pageId + "/") || hasDotSegment(download)) {
             throw new BackendResponseException("attachment without a usable download link");
         }
         byte[] data = send(() -> {
@@ -442,6 +445,21 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         String text = TextHygiene.normalize(new String(data, StandardCharsets.UTF_8));
         String cut = UntrustedText.cut(text, maxChars);
         return Optional.of(new AttachmentText(attachment, cut, cut.length() < text.length(), null));
+    }
+
+    /** Obstacles to a path that stays under the attachment folder: dot segments, also percent-encoded, and encoded slashes. */
+    private static boolean hasDotSegment(String path) {
+        String lower = path.split("\\?", 2)[0].toLowerCase(Locale.ROOT);
+        if (lower.contains("%2f") || lower.contains("%5c") || lower.contains("\\")) {
+            return true;
+        }
+        for (String segment : lower.split("/")) {
+            if (segment.equals(".") || segment.equals("..") || segment.equals("%2e") || segment.equals(".%2e")
+                    || segment.equals("%2e.") || segment.equals("%2e%2e")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isTextMedia(String mediaType) {
@@ -546,6 +564,9 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         try {
             return client.get().uri(uri -> uri.path(path).build()).accept(accept).retrieve().body(String.class);
         } catch (HttpClientErrorException notThere) {
+            return null;
+        } catch (BackendResponseException redirected) {
+            // A login redirect in front of the path is "not available here", so the probe can try the next source.
             return null;
         }
     }
@@ -854,7 +875,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record LabelListResponse(List<LabelResponse> results) {
+    record LabelListResponse(List<LabelResponse> results, LinksResponse _links) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

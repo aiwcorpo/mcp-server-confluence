@@ -75,10 +75,12 @@ public final class ToolResults {
     public record LabelItem(UntrustedText name) {
     }
 
-    public record LabelsResult(List<LabelItem> labels) {
+    /** {@code truncated} is true when the page has more labels than the 200 listed. */
+    public record LabelsResult(List<LabelItem> labels, boolean truncated) {
 
-        static LabelsResult of(List<String> names) {
-            return new LabelsResult(names.stream().map(name -> new LabelItem(UntrustedText.plain(name, 100))).toList());
+        static LabelsResult of(List<String> names, boolean truncated) {
+            return new LabelsResult(names.stream().map(name -> new LabelItem(UntrustedText.plain(name, 100))).toList(),
+                    truncated);
         }
     }
 

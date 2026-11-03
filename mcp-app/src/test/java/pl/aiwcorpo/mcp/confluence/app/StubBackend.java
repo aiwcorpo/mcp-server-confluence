@@ -194,6 +194,11 @@ final class StubBackend {
     private void probe(HttpExchange exchange) throws IOException {
         probeAuthorizations.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
         boolean manifest = exchange.getRequestURI().getRawPath().contains("applinks");
+        if (!manifest && fixture("server-information.redirect") != null) {
+            exchange.getResponseHeaders().set("Location", baseUrl() + "/login.action");
+            respond(exchange, 302, "<html>login</html>");
+            return;
+        }
         String body = fixture(manifest ? "manifest.xml" : "server-information.json");
         if (body == null) {
             respond(exchange, 403, error(403, "Forbidden"));
@@ -283,6 +288,7 @@ final class StubBackend {
                         "<p>Typo here.</p><ac:structured-macro ac:name=\"include\"><ac:parameter ac:name=\"\">"
                                 + "<ac:link><ri:page ri:space-key=\"HR\" ri:content-title=\"Salaries\" /></ac:link>"
                                 + "</ac:parameter></ac:structured-macro>"),
+                new CommentFixture("7004", "1000", null, "No Container", "footer", "<p>orphan</p>"),
                 new CommentFixture("7100", "2000", null, "HR Admin", "footer", "<p>" + HR_SECRET + "</p>"))) {
             comments.put(comment.id(), comment);
         }
@@ -292,7 +298,9 @@ final class StubBackend {
     private ObjectNode comment(CommentFixture comment, List<String> expand) {
         ObjectNode node = JSON.createObjectNode().put("id", comment.id()).put("type", "comment")
                 .put("status", "current").put("title", "Re: page " + comment.page());
-        node.putObject("container").put("id", comment.page()).put("type", "page");
+        if (!"7004".equals(comment.id())) {
+            node.putObject("container").put("id", comment.page()).put("type", "page");
+        }
         ArrayNode ancestors = node.putArray("ancestors");
         if (comment.parent() != null) {
             ancestors.addObject().put("id", comment.parent()).put("type", "comment");
@@ -317,7 +325,8 @@ final class StubBackend {
         window(exchange, response, query, "/rest/api/content/" + pageId + "/child/comment");
     }
 
-    private static final Map<String, List<String>> PAGE_LABELS = Map.of("1000", List.of("handbook", "release"));
+    private static final Map<String, List<String>> PAGE_LABELS = Map.of("1000", List.of("handbook", "release"),
+            "1700", java.util.stream.IntStream.range(0, 200).mapToObj(i -> "label-" + i).toList());
 
     private void labels(HttpExchange exchange, String pageId, String method, String body) throws IOException {
         if (!FIXTURES.containsKey(pageId)) {
@@ -351,6 +360,7 @@ final class StubBackend {
                 new AttachmentFixture("att5001", "1001", "notes.txt", "text/plain", 15, "Deploy at 10:00"),
                 new AttachmentFixture("att5002", "1001", "diagram.png", "image/png", 3000, null),
                 new AttachmentFixture("att5003", "1001", "dump.csv", "text/csv", 500_000, "a,b"),
+                new AttachmentFixture("att5004", "1001", "..", "text/plain", 5, "dots"),
                 new AttachmentFixture("att5100", "2000", "salaries.txt", "text/plain", 30, HR_SECRET))) {
             attachments.put(attachment.id(), attachment);
         }
@@ -550,6 +560,12 @@ final class StubBackend {
                     results.add(contentNode(fixture, expand));
                 }
             }
+        } else if (cql.contains("space in (\"IDX\")")) {
+            for (int i = 0; i < 40; i++) {
+                results.add(listed(String.valueOf(8000 + i), "IDX", expand));
+            }
+            window(exchange, response, query, "/rest/api/content/search");
+            return;
         } else if (cql.contains("space in (\"BIG\")")) {
             FIXTURES.values().stream().filter(f -> "BIG".equals(f.space())).forEach(f -> results.add(contentNode(f, expand)));
             window(exchange, response, query, "/rest/api/content/search");
@@ -650,6 +666,7 @@ final class StubBackend {
         labels.put("UNCL", null);
         labels.put("FULL", List.of("a", "b"));
         labels.put("BIG", List.of());
+        labels.put("IDX", List.of());
         for (String ordinary : List.of("SECRET", "REDIR", "BAD", "FAIL")) {
             labels.put(ordinary, List.of());
         }
@@ -684,6 +701,11 @@ final class StubBackend {
                 new Fixture("1700", "page", "ENG", "Contended", 5, List.of("1000"), "<p>Edited by two people.</p>", null),
                 new Fixture("4003", "page", "MANY", "Many labels", 1, List.of(), "<p>unclear</p>", null))) {
             fixtures.put(fixture.id(), fixture);
+        }
+        for (int i = 0; i < 40; i++) {
+            String id = String.valueOf(8000 + i);
+            // 8000-8029 sit in HR now, 8030-8039 in IDX; the search index lists all of them under IDX.
+            fixtures.put(id, new Fixture(id, "page", i < 30 ? "HR" : "IDX", "Moved " + i, 1, List.of(), "<p>m</p>", null));
         }
         for (int i = 0; i < 30; i++) {
             String id = String.valueOf(9000 + i);

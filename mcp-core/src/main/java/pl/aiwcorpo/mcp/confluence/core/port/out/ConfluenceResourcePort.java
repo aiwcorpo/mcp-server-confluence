@@ -62,7 +62,8 @@ public interface ConfluenceResourcePort {
     /** @throws pl.aiwcorpo.mcp.confluence.core.domain.PageRejectedException Confluence refused the comment (400) */
     Comment addComment(NewComment comment);
 
-    List<String> listLabels(String pageId);
+    /** Global labels, at most 200; {@code nextStart} is non-null when the page has more. */
+    Slice<String> listLabels(String pageId);
 
     /** Adding a label the page already has is not an error. */
     void addLabel(String pageId, String label);

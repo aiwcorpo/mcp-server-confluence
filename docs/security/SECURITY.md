@@ -36,3 +36,19 @@ Niezmienniki platformy (`mcp-platform-plan/00-overview.md`) i to, gdzie serwer j
 Konto bez uprawnień, sandbox systemd (`deploy/systemd/mcp-confluence.service`), sekrety tylko w pliku
 środowiska (0640, root:mcp) albo z magazynu sekretów, certyfikat serwera z SAN `mcp-confluence.internal` z CA
 wewnętrznego. Redis: użytkownik ACL `mcp-confluence` z kluczami `jti:mcp-confluence:*` i komendą `SET`.
+
+## Ryzyka przyjęte i granice
+
+- **Zajęty tytuł jako wyrocznia.** `create_page` i zmiana tytułu w `update_page` dają `invalid_argument` przy zajętym tytule, także gdy
+  stronę o tym tytule ukrywają restrykcje Confluence albo polityka. Wywołujący ma w tej przestrzeni prawo zapisu, a odpowiedź pochodzi z
+  Confluence (400). Ryzyko przyjęte; tekst błędu nie zawiera tytułu ani treści odpowiedzi.
+- **Usunięcie strony zmienia przodków dzieci.** `delete_page` przenosi stronę do kosza, a jej dzieci Confluence podpina pod rodzica
+  usuwanej strony, więc zmieniają się ich `ancestorIds`. Przy polityce opartej o poddrzewo (`forbid` dla poddrzewa X, grant
+  `Confluence::Page/X`) usunięcie korzenia X przeklasyfikuje dzieci. Wymaga akcji `delete` i kodu TOTP; do uwzględnienia w politykach (ws-09).
+- **`ancestorIds` w `get_page`.** Wynik zawiera id przodków (same id, bez tytułów), także takich, które polityka mogłaby zabraniać.
+- **Wersje historyczne.** Confluence DC nie podaje przodków wersji historycznej, więc `get_page_version` porównuje tylko przestrzeń i id.
+  Wersja sprzed przeniesienia strony z zabronionego poddrzewa jest zwracana, o ile strona jest teraz oceniona jako dozwolona.
+- **Krótka strona listy.** Dopełnianie (`PageFiller`) ogranicza liczbę odczytów do 5; po ich wyczerpaniu strona może być krótka z kursorem.
+  Serwer nigdy nie zwraca liczby ani komunikatu o ukrytych elementach.
+- **Bramka zapisu.** Flaga `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION` działa tylko dla wersji nieodczytanej przez sondę (`unavailable`
+  po jej pierwszej odpowiedzi). Wersje starsze niż 8.5 i 11.x oraz czas przed pierwszą odpowiedzią sondy są tylko do odczytu.

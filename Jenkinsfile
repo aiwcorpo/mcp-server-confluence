@@ -7,7 +7,7 @@ pipeline {
   stages {
     stage('verify (change request)') {
       when { changeRequest() }
-      agent { docker { image 'maven:3.9.12-eclipse-temurin-25' } }
+      agent { docker { image 'maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e' } }
       steps {
         sh 'git config --global --add safe.directory "$WORKSPACE" && ci/run.sh verify'
       }
@@ -19,7 +19,7 @@ pipeline {
     }
     stage('verify (main)') {
       when { branch 'main' }
-      agent { docker { image 'maven:3.9.12-eclipse-temurin-25' } }
+      agent { docker { image 'maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e' } }
       steps {
         withCredentials([usernamePassword(credentialsId: 'mcp-maven-registry',
             usernameVariable: 'MCP_MAVEN_REPOSITORY_USER', passwordVariable: 'MCP_MAVEN_REPOSITORY_PASSWORD')]) {
@@ -35,7 +35,7 @@ pipeline {
     }
     stage('image (main)') {
       when { branch 'main' }
-      agent { docker { image 'docker:27-cli'; args '-v /var/run/docker.sock:/var/run/docker.sock -u root' } }
+      agent { docker { image 'docker:27-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c'; args '-v /var/run/docker.sock:/var/run/docker.sock -u root' } }
       steps {
         sh 'apk add --no-cache bash git'
         unstash 'build'

@@ -78,6 +78,16 @@ class VersionCoverageTest extends ServerTestSupport {
     }
 
     @Test
+    void aRedirectOnServerInformationFallsBackToTheManifest() {
+        BACKEND.profile("confluence-dc-sso");
+
+        Capabilities capabilities = probe.probe();
+
+        assertThat(capabilities.state()).isEqualTo(Capabilities.State.SUPPORTED);
+        assertThat(capabilities.backendVersion()).isEqualTo("10.2.1");
+    }
+
+    @Test
     void theProbeSendsNoCredential() {
         BACKEND.profile("confluence-dc-9.2");
         probe.probe();

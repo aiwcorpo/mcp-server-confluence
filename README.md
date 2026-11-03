@@ -17,7 +17,7 @@ Dokumentacja platformy: repozytorium `mcp-docs`.
 | 8.5 do 10.x (w tym 9.2 LTS i 10.2 LTS) | wspierana | wszystkie narzędzia, zapis włączony |
 | starsza niż 8.5 | `degraded` | tylko odczyt, zapis wyłączony (`upstream_unavailable`) |
 | 11.0 i nowsza | `degraded` | tylko odczyt, zapis wyłączony do czasu przetestowania |
-| wersja nieczytelna albo bez odpowiedzi sondy | `unavailable` | tylko odczyt, zapis wyłączony |
+| wersja nieczytelna albo bez odpowiedzi sondy | `unavailable` | tylko odczyt; zapis tylko po jawnej fladze `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true` i po pierwszej odpowiedzi sondy |
 
 Confluence Server (koniec wsparcia 15.02.2024) i Confluence Cloud nie są wspierane (Cloud: osobna decyzja, wpis `proposed` w
 `CONTRACT_CHANGES.md` mcp-contracts, patrz `STATUS.md`). REST v1 `/rest/api/content`, `/space`, `.../label`, `.../child/...` ma
@@ -29,8 +29,10 @@ poświadczenia) czyta wersję: `GET /rest/api/server-information` (pole `version
 `minorVersion`, `patchLevel`), a gdy ta ścieżka jest za logowaniem, manifest `GET /rest/applinks/1.0/manifest` (`version`).
 Wynik widać w logu (`backend capability: probe=confluence state=...`), w metryce `mcp_backend_capability` i w
 `/actuator/health` (szczegół `backendCapability`, tylko z wewnętrznym JWT). `degraded` i `unavailable` nie zdejmują serwera z
-balancera. Operator, którego Confluence ukrywa wersję albo jest nowsze niż 10.x, może włączyć zapis jawnie:
-`MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true`.
+balancera. Operator, którego Confluence ukrywa wersję przed sondą (obie ścieżki odpowiadają, ale bez numeru wersji: stan
+`unavailable` po pierwszej odpowiedzi sondy), może włączyć zapis jawnie: `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true`. Flaga nie
+działa dla wersji, którą sonda odczytała i nie zna (starsza niż 8.5, 11.x i nowsza: tylko odczyt, niezależnie od flagi), ani przed
+pierwszą odpowiedzią sondy (zapis zamknięty).
 
 ## Szybki start
 
@@ -75,9 +77,11 @@ Argumenty i wyniki (pełny rejestr w `docs/api/tools-catalog.md`):
 - Wyszukiwanie: model podaje `space` i filtry `text`, `title`, `label`, `orderBy` (`lastmodified`, `created`, `title`), nigdy
   zapytania. CQL składa `StructuredQuery`: warunki w jednym nawiasie, zakres przestrzeni po nim. Wymagany jest co najmniej jeden filtr.
 - Listy (`search_pages`, `list_pages`, `list_child_pages`, `list_spaces`, `list_comments`, `list_attachments`) zwracają
-  `PagedResult`: `items` (do 25), `nextCursor`, `truncated`, `omitted`; bez `total`. Kursor jest podpisany i zaszyfrowany (beta-13), związany z
+  `PagedResult`: `items` (do 25, komentarze do 10), `nextCursor`, `truncated`, `omitted`; bez `total`. Kursor jest podpisany i zaszyfrowany (beta-13), związany z
   użytkownikiem, narzędziem i argumentami, ważny 15 minut; obcy, zmieniony albo przeterminowany to ten sam `invalid_argument`.
-  Strona po filtrze polityki może być krótsza niż 25 i mieć `nextCursor`.
+  Strona po filtrze polityki jest dopełniana (`PageFiller`, do 5 odczytów Confluence na wywołanie), żeby krótka strona z kursorem nie
+  zdradzała, że coś ukryto; `list_comments` ma okno 10 komentarzy po najwyżej 4000 znaków (razem do około 40 KB), a `list_labels`
+  zwraca do 200 etykiet i `truncated`, gdy jest ich więcej.
 - Tekst z Confluence (tytuły, treść, komentarze, autor, nazwy etykiet i załączników) jest w wynikach `untrusted-data`.
   Treść jest czytana wyłącznie z `body.storage`; makra spoza krótkiej listy nie są rozwijane, ich nazwy są w `omittedMacros`,
   a w `omitted` listy komentarzy pojawia się `unsupported_macro`.
@@ -165,7 +169,7 @@ Artefakty platformy (`mcp-platform-starter`, `mcp-contracts`) są w GitHub Packa
 - Audyt C8 idzie na stdout (journald), logger `pl.aiwcorpo.mcp.audit`. Linie operacyjne: `event=page_created_outside_judged_tree`
   (strona utworzona poza oceniony zakres, wymaga ręcznego sprawdzenia), `backend capability: ... state=degraded`.
 - Zmiana wersji Confluence (upgrade): sonda sama zauważy nową wersję w ciągu interwału; po przejściu na 11.x serwer przechodzi
-  w odczyt, do czasu wydania serwera przetestowanego na tej wersji albo jawnego `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true`.
+  w odczyt do czasu wydania serwera przetestowanego na tej wersji (flaga zapisu tego nie zmienia).
 
 ## Pierwsze uruchomienie u klienta (tylko GET)
 
@@ -224,7 +228,7 @@ wyłącza TLS i mTLS, trzyma `jti` w pamięci i dopuszcza klucze testowe; starte
 | `MCP_GATEWAY_ISSUER` | `iss` C2 | `https://mcp-gateway.internal` |
 | `MCP_CONNECT_URL` | strona portalu do połączenia konta, z `{system}`; trafia do `credential_required` | wymagane |
 | `MCP_CONFLUENCE_URL` | adres bazowy Confluence (bez `/rest/api`), np. `https://confluence.corp.internal` albo z kontekstem `.../confluence`; poza `dev` tylko `https` | wymagane |
-| `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION` | `true` dopuszcza zapis także wtedy, gdy sonda nie zna wersji (patrz Wspierane wersje) | `false` |
+| `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION` | `true` dopuszcza zapis, gdy sonda nie mogła odczytać wersji (stan `unavailable`); nie zmienia nic dla wersji starszej niż 8.5 i dla 11.x (patrz Wspierane wersje) | `false` |
 | `MCP_CURSOR_KEY` | klucz HMAC kursorów list (Base64, co najmniej 32 bajty), taki sam na wszystkich instancjach; bez niego każdy proces losuje własny | losowy |
 | `MCP_CONFLUENCE_ALLOW_PLAIN_HTTP` | `true` dopuszcza `http` poza `dev`, wyłącznie dla mocków `mcp-platform-dev` (PAT idzie wtedy otwartym tekstem; ostrzeżenie w logu) | `false` |
 | `MCP_CONFLUENCE_SSL_BUNDLE` | bundle SSL dla HTTPS Confluence, np. `mcp-internal-ca`; puste = zaufanie JDK | puste |
@@ -345,10 +349,11 @@ to cienkie nakładki, więc to samo działa lokalnie, w obrazie `maven:3.9.12-ec
 
 Inny argument kończy się kodem 2. Merge request i pull request nie dostają sekretów ani gniazda Dockera: testy nie
 potrzebują kontenerów, a rejestr Maven z artefaktami platformy (`MCP_MAVEN_REPOSITORY_URL`, zwykła zmienna) jest wtedy
-czytany anonimowo (`.ci/settings-anonymous.xml`). Dane dostępu (`MCP_MAVEN_REPOSITORY_USER`, `_PASSWORD`; w GitLabie
+czytany anonimowo (`.ci/settings-anonymous.xml`); w GitHub Actions pull request czyta GitHub Packages tokenem przebiegu z
+`packages: read`. Obrazy buildu w CI są przypięte po digeście. Dane dostępu (`MCP_MAVEN_REPOSITORY_USER`, `_PASSWORD`; w GitLabie
 zmienne Protected i Masked, w Jenkinsie poświadczenie `mcp-maven-registry`) widzi tylko gałąź `main`, na której działa też
 krok `image` (runner z gniazdem Dockera; w GitLabie tag `docker-socket` musi należeć do runnera chronionego (protected),
 inaczej gniazdo trafiłoby w ręce merge requestu; w GitHubie sekrety są w Environment `ci-main`). Moduły z wymaganymi
-testami: `CI_TEST_MODULES` (domyślnie `mcp-application mcp-integration mcp-tools mcp-app`), dolna granica dla `mcp-app`: `CI_APP_MIN_TESTS` (80).
+testami: `CI_TEST_MODULES` (domyślnie `mcp-application mcp-integration mcp-tools mcp-app`), dolna granica dla `mcp-app`: `CI_APP_MIN_TESTS` (104).
 Rejestracja manifestu w gateway'u (`PUT` z certyfikatem `mcp-registry-ci-mcp-confluence`) jest osobnym krokiem pipeline'u
 serwera, bo wymaga sekretu, którego repo nie zawiera.

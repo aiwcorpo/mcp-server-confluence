@@ -47,7 +47,7 @@ public interface ConfluenceUseCase {
 
     Slice<Comment> listComments(PageRecord page, int start);
 
-    List<String> listLabels(PageRecord page);
+    Slice<String> listLabels(PageRecord page);
 
     Slice<Attachment> listAttachments(PageRecord page, int start);
 

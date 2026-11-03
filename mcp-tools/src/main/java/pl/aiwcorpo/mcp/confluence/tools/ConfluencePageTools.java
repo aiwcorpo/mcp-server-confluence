@@ -12,6 +12,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.ConfluenceResourceModel;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.port.in.ConfluenceUseCase;
@@ -33,6 +34,7 @@ import pl.aiwcorpo.mcp.platform.guard.ToolRisk;
 import pl.aiwcorpo.mcp.platform.guard.ToolTitle;
 import pl.aiwcorpo.mcp.platform.input.ArgumentLimits;
 import pl.aiwcorpo.mcp.platform.paging.CursorCodec;
+import pl.aiwcorpo.mcp.platform.paging.PageFiller;
 import pl.aiwcorpo.mcp.platform.paging.PagedResult;
 import pl.aiwcorpo.mcp.platform.resource.QueryScope;
 import pl.aiwcorpo.mcp.platform.resource.ResourceContext;
@@ -60,6 +62,7 @@ public class ConfluencePageTools {
     static final int TITLE_MAX = 255;
     static final int BODY_MAX = 20_000;
     static final int COMMENT_MAX = 10_000;
+    static final int PAGE_SIZE = 25;
 
     /** Single line with at least one non-space character. */
     static final String NON_BLANK_LINE = "^(?=.*\\S)[^\\u0000-\\u001f\\u007f]+$";
@@ -93,7 +96,7 @@ public class ConfluencePageTools {
      */
     @Tool(name = SEARCH_TOOL, description = "Searches the current pages of one Confluence space. Filters: words in "
             + "title and content (text), words in the title (title), an exact label (label); at least one is "
-            + "required. Returns up to 25 pages per call, each with id, title, version and last update time, and "
+            + "required. Returns about 25 pages per call, each with id, title, version and last update time, and "
             + "nextCursor when more follow. Characters other than letters, digits, spaces, '.', '_' and apostrophes "
             + "in text and title are treated as spaces.")
     @ToolRisk(RiskLevel.READ_ONLY)
@@ -120,7 +123,7 @@ public class ConfluencePageTools {
             throw new InvalidToolArgumentException("at least one of text, title and label is required");
         }
         String fingerprint = CursorCodec.fingerprint(spaceKey, words, titleWords, label, orderBy);
-        int start = startOf(cursor, SEARCH_TOOL, fingerprint);
+        String position = positionOf(cursor, SEARCH_TOOL, fingerprint);
         QueryScope scope = policy.queryScope(ConfluenceResourceModel.SPACE_TYPE).narrowedTo(List.of(spaceKey));
         var query = scope.cql(Set.of("text", "title", "label"), Set.of("created", "lastmodified", "title"))
                 .where("text", Operator.CONTAINS, words)
@@ -129,12 +132,13 @@ public class ConfluencePageTools {
         if (orderBy != null) {
             query.orderBy(orderBy, "title".equals(orderBy) ? Direction.ASC : Direction.DESC);
         }
-        var page = useCase.searchPages(spaceKey, query.build(), start);
-        return PagedResult.of(page.items().stream().map(PageHit::of).toList(), nextCursor(page.nextStart(), SEARCH_TOOL, fingerprint));
+        String cql = query.build();
+        return filledPage(position, SEARCH_TOOL, fingerprint, ConfluenceResourceModel.PAGE_TYPE, PageSummary::id,
+                start -> useCase.searchPages(spaceKey, cql, start), PageHit::of);
     }
 
     @Tool(name = "list_pages", description = "Lists the current pages of one Confluence space in Confluence's own "
-            + "order, up to 25 per call, each with id, title, version and last update time, and nextCursor when more follow.")
+            + "order, about 25 per call, each with id, title, version and last update time, and nextCursor when more follow.")
     @ToolRisk(RiskLevel.READ_ONLY)
     @ToolTitle("Lista stron przestrzeni")
     public PagedResult<PageHit> listPages(
@@ -145,13 +149,12 @@ public class ConfluencePageTools {
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
         String spaceKey = judgedSpace(validSpace(space)).key();
         String fingerprint = CursorCodec.fingerprint(spaceKey);
-        int start = startOf(cursor, "list_pages", fingerprint);
-        var page = useCase.listPages(spaceKey, start);
-        return PagedResult.of(page.items().stream().map(PageHit::of).toList(),
-                nextCursor(page.nextStart(), "list_pages", fingerprint));
+        String position = positionOf(cursor, "list_pages", fingerprint);
+        return filledPage(position, "list_pages", fingerprint, ConfluenceResourceModel.PAGE_TYPE, PageSummary::id,
+                start -> useCase.listPages(spaceKey, start), PageHit::of);
     }
 
-    @Tool(name = "list_child_pages", description = "Lists the direct child pages of a Confluence page, up to 25 per "
+    @Tool(name = "list_child_pages", description = "Lists the direct child pages of a Confluence page, about 25 per "
             + "call, each with id, title, version and last update time, and nextCursor when more follow.")
     @ToolRisk(RiskLevel.READ_ONLY)
     @ToolTitle("Lista stron podrzędnych")
@@ -163,13 +166,12 @@ public class ConfluencePageTools {
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
         PageRecord parent = judgedPage(pageId);
         String fingerprint = CursorCodec.fingerprint(parent.id());
-        int start = startOf(cursor, "list_child_pages", fingerprint);
-        var page = useCase.listChildPages(parent, start);
-        return PagedResult.of(page.items().stream().map(PageHit::of).toList(),
-                nextCursor(page.nextStart(), "list_child_pages", fingerprint));
+        String position = positionOf(cursor, "list_child_pages", fingerprint);
+        return filledPage(position, "list_child_pages", fingerprint, ConfluenceResourceModel.PAGE_TYPE, PageSummary::id,
+                start -> useCase.listChildPages(parent, start), PageHit::of);
     }
 
-    @Tool(name = "list_spaces", description = "Lists the global Confluence spaces the user can see, up to 25 per call, "
+    @Tool(name = "list_spaces", description = "Lists the global Confluence spaces the user can see, about 25 per call, "
             + "each with key and name, and nextCursor when more follow. Personal spaces are not listed.")
     @ToolRisk(RiskLevel.READ_ONLY)
     @ToolTitle("Lista przestrzeni")
@@ -177,10 +179,9 @@ public class ConfluencePageTools {
             @ToolParam(required = false, description = "nextCursor of the previous call")
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
         String fingerprint = CursorCodec.fingerprint("spaces");
-        int start = startOf(cursor, "list_spaces", fingerprint);
-        var page = useCase.listSpaces(start);
-        return PagedResult.of(page.items().stream().map(SpaceHit::of).toList(),
-                nextCursor(page.nextStart(), "list_spaces", fingerprint));
+        String position = positionOf(cursor, "list_spaces", fingerprint);
+        return filledPage(position, "list_spaces", fingerprint, ConfluenceResourceModel.SPACE_TYPE, Space::key,
+                useCase::listSpaces, SpaceHit::of);
     }
 
     // ---- reads --------------------------------------------------------------------------------------------------
@@ -252,7 +253,7 @@ public class ConfluencePageTools {
                 .orElseThrow(PageNotFoundException::new);
     }
 
-    @Tool(name = "list_comments", description = "Lists the comments of a Confluence page, replies included, up to 25 "
+    @Tool(name = "list_comments", description = "Lists the comments of a Confluence page, replies included, up to 10 "
             + "per call: id, id of the parent comment, author, creation time, location (footer or inline) and the "
             + "text of each, and nextCursor when more follow. Macros in comments are not expanded.")
     @ToolRisk(RiskLevel.READ_ONLY)
@@ -273,17 +274,19 @@ public class ConfluencePageTools {
                 macros ? List.of("unsupported_macro") : List.of());
     }
 
-    @Tool(name = "list_labels", description = "Lists the labels of a Confluence page (global labels only).")
+    @Tool(name = "list_labels", description = "Lists the labels of a Confluence page (global labels only), at most 200; "
+            + "truncated is true when the page has more.")
     @ToolRisk(RiskLevel.READ_ONLY)
     @ToolTitle("Lista etykiet strony")
     public LabelsResult listLabels(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId) {
-        return LabelsResult.of(useCase.listLabels(judgedPage(pageId)));
+        Slice<String> labels = useCase.listLabels(judgedPage(pageId));
+        return LabelsResult.of(labels.items(), labels.nextStart() != null);
     }
 
-    @Tool(name = "list_attachments", description = "Lists the attachments of a Confluence page, up to 25 per call: "
+    @Tool(name = "list_attachments", description = "Lists the attachments of a Confluence page, about 25 per call: "
             + "id, file name, media type, size in bytes and version, and nextCursor when more follow. File contents "
             + "are not part of the list.")
     @ToolRisk(RiskLevel.READ_ONLY)
@@ -468,6 +471,43 @@ public class ConfluencePageTools {
             throw new InvalidToolArgumentException(name + " must contain at least one letter or digit");
         }
         return words;
+    }
+
+    /** Most reads of Confluence to fill one page after the policy thinned it out. */
+    private static final int MAX_FILL_READS = 5;
+
+    /**
+     * One page of a list whose elements the policy may hide. A short page with a cursor, or a run of empty ones, would tell
+     * the caller that something in the window was hidden, so further windows are read until the page is full or the list
+     * ends (README of the starter, "Duże wyniki"). The elements are judged here with the resolver of their type; the
+     * starter's result filter then finds the same answers cached.
+     */
+    private <S, R> PagedResult<R> filledPage(@Nullable String position, String tool, String fingerprint,
+            String resourceType, java.util.function.Function<S, String> idOf,
+            java.util.function.IntFunction<Slice<S>> read, java.util.function.Function<S, R> shape) {
+        PageFiller.Filled<S> filled = PageFiller.fill(position, PAGE_SIZE, MAX_FILL_READS,
+                at -> {
+                    Slice<S> window = read.apply(at == null ? 0 : Integer.parseInt(at));
+                    return new PageFiller.BackendPage<>(window.items(),
+                            window.nextStart() == null ? null : Integer.toString(window.nextStart()));
+                },
+                items -> policy.retainAllowedById(resourceType, items, idOf));
+        String next = filled.next() == null ? null : cursors.issue(tool, fingerprint, filled.next());
+        return PagedResult.of(filled.items().stream().map(shape).toList(), next);
+    }
+
+    /** The position inside a cursor of this call as text, or null for the first page. */
+    private @Nullable String positionOf(@Nullable String cursor, String tool, String fingerprint) {
+        if (cursor == null) {
+            return null;
+        }
+        String position = cursors.open(cursor, tool, fingerprint);
+        try {
+            Integer.parseInt(position);
+        } catch (NumberFormatException forged) {
+            throw new InvalidToolArgumentException("cursor is not valid for this call");
+        }
+        return position;
     }
 
     private int startOf(@Nullable String cursor, String tool, String fingerprint) {

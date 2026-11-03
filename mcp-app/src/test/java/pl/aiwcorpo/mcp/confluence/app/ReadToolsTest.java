@@ -173,7 +173,7 @@ class ReadToolsTest extends ServerTestSupport {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             JsonNode list = json(call(client, "list_attachments", Map.of("pageId", "1001")));
             assertThat(list.get("items")).extracting(item -> item.get("id").asString())
-                    .containsExactly("att5001", "att5002", "att5003");
+                    .containsExactly("att5001", "att5002", "att5003", "att5004");
 
             JsonNode text = json(call(client, "read_attachment", Map.of("pageId", "1001", "attachmentId", "att5001")));
             assertThat(text.get("content").get("text").asString()).isEqualTo("Deploy at 10:00");
@@ -221,5 +221,39 @@ class ReadToolsTest extends ServerTestSupport {
             assertCredentialRequired(call(client, "get_page_by_title", Map.of("space", "ENG", "title", "x")));
         }
         assertThat(BACKEND.authorizations()).isEmpty();
+    }
+
+    @Test
+    void aPageThinnedOutByThePolicyIsFilledFromTheNextWindowsNotReturnedShort() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            JsonNode result = json(call(client, "search_pages", Map.of("space", "IDX", "text", "moved")));
+
+            assertThat(result.get("items")).as("the first window is all moved to HR; the next one holds the rest")
+                    .hasSize(10).allSatisfy(item -> assertThat(item.get("id").asString()).startsWith("803"));
+            assertThat(result.get("nextCursor").isNull()).isTrue();
+        }
+        assertThat(BACKEND.requests().stream().filter(r -> r.path().endsWith("/search") && r.query().get("cql").startsWith("(text"))
+                .map(r -> r.query().get("start"))).containsExactly("0", "25");
+    }
+
+    @Test
+    void labelsReportWhenTheListWasCut() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            JsonNode many = json(call(client, "list_labels", Map.of("pageId", "1700")));
+            assertThat(many.get("labels")).hasSize(200);
+            assertThat(many.get("truncated").asBoolean()).isTrue();
+
+            assertThat(json(call(client, "list_labels", Map.of("pageId", "1000"))).get("truncated").asBoolean()).isFalse();
+        }
+    }
+
+    @Test
+    void anAttachmentWhoseDownloadPathHasADotSegmentIsNotFollowed() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            McpSchema.CallToolResult result = call(client, "read_attachment", Map.of("pageId", "1001", "attachmentId", "att5004"));
+
+            assertThat(text(result)).contains("\"error\":\"internal_error\"");
+        }
+        assertThat(BACKEND.requests()).noneMatch(r -> r.path().startsWith("/download/"));
     }
 }

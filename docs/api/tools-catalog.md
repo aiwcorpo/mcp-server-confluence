@@ -18,8 +18,8 @@ pochodzą z `mcp-contracts` (`contractPattern`). `cursor` to `^[A-Za-z0-9_.-]{1,
 | `get_page_by_title` | Pobierz stronę po tytule | `READ_ONLY` | `read` | `space`, `title` (1-255, jedna linia) | `space`; strona oceniana polityką w narzędziu | jak `get_page` |
 | `get_space` | Pobierz przestrzeń | `READ_ONLY` | `read` | `space` | `space` | `{key, name}` |
 | `get_page_version` | Pobierz wersję strony | `READ_ONLY` | `read` | `pageId`, `version` (1-1000000) | `pageId` | jak `get_page` (pole `version` = żądana) |
-| `list_comments` | Lista komentarzy | `READ_ONLY` | `read` | `pageId`, `cursor?` | `pageId` | `PagedResult<{id, parentId, author, created, location, body, omittedMacros}>` |
-| `list_labels` | Lista etykiet strony | `READ_ONLY` | `read` | `pageId` | `pageId` | `{labels: [{name}]}` (tylko prefiks `global`) |
+| `list_comments` | Lista komentarzy | `READ_ONLY` | `read` | `pageId`, `cursor?` | `pageId` | `PagedResult<{id, parentId, author, created, location, body, omittedMacros}>`, okno 10, treść do 4000 znaków |
+| `list_labels` | Lista etykiet strony | `READ_ONLY` | `read` | `pageId` | `pageId` | `{labels: [{name}], truncated}` (tylko prefiks `global`, do 200) |
 | `list_attachments` | Lista załączników | `READ_ONLY` | `read` | `pageId`, `cursor?` | `pageId` | `PagedResult<{id, title, mediaType, fileSize, version}>` |
 | `read_attachment` | Odczytaj załącznik tekstowy | `READ_ONLY` | `read` | `pageId`, `attachmentId` (`^att[0-9]{1,18}$`) | `pageId` | `{id, title, mediaType, content, omitted}` |
 | `create_page` | Utwórz stronę | `UPDATE` | `update` | `space`, `parentId`, `title`, `body` (1-20000) | `space`, `parentId` -> `Confluence::Page` | `{id, spaceKey, title, version}` |
@@ -27,6 +27,8 @@ pochodzą z `mcp-contracts` (`contractPattern`). `cursor` to `^[A-Za-z0-9_.-]{1,
 | `add_comment` | Dodaj komentarz | `UPDATE` | `update` | `pageId`, `body` (1-10000), `parentCommentId?` | `pageId` | `{id, pageId}` |
 | `add_label` | Dodaj etykietę | `UPDATE` | `update` | `pageId`, `label` | `pageId` | `{pageId, label}` |
 | `delete_page` | Usuń stronę | `DESTRUCTIVE` | `delete` | `pageId` | `pageId` | `{id}` |
+
+Listy stron i przestrzeni są dopełniane po filtrze polityki (`PageFiller`, do 5 odczytów), więc strona ma około 25 elementów, nie dokładnie 25.
 
 Uprawnienia (C9): odczyt `mcp-confluence-read`, zapis `mcp-confluence-write` i zakres przestrzeni lub drzewa stron, `delete_page`
 grupa destrukcyjna z potwierdzeniem TOTP w gateway'u. Polityki dla nowych narzędzi pisze ws-09 na podstawie manifestu.

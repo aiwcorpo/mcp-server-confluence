@@ -25,6 +25,9 @@ public class ConfluenceService implements ConfluenceUseCase {
     /** Window size of every list; also what Confluence is asked for. */
     static final int PAGE_SIZE = 25;
 
+    /** Comments are long, so their window is smaller: 10 comments of at most 4000 characters stay under 50 KB. */
+    static final int COMMENT_WINDOW = 10;
+
     /** Text of an attachment handed to the model, in characters. */
     static final int ATTACHMENT_TEXT_MAX = 50_000;
 
@@ -94,13 +97,13 @@ public class ConfluenceService implements ConfluenceUseCase {
 
     @Override
     public Slice<Comment> listComments(PageRecord page, int start) {
-        Slice<Comment> found = resource.listComments(page.id(), start, PAGE_SIZE);
+        Slice<Comment> found = resource.listComments(page.id(), start, COMMENT_WINDOW);
         return new Slice<>(found.items().stream().filter(comment -> page.id().equals(comment.containerId())).toList(),
                 found.nextStart());
     }
 
     @Override
-    public List<String> listLabels(PageRecord page) {
+    public Slice<String> listLabels(PageRecord page) {
         return resource.listLabels(page.id());
     }
 

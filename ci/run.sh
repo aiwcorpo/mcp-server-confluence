@@ -143,7 +143,7 @@ require_tests_ran() {
     executed="$(module_executed "$module")"
     floor=1
     if [[ "$module" == "mcp-app" ]]; then
-      floor="${CI_APP_MIN_TESTS:-80}"
+      floor="${CI_APP_MIN_TESTS:-104}"
     fi
     if [[ "$executed" -lt "$floor" || "$executed" -eq 0 ]]; then
       echo "ci/run.sh: $module ran $executed tests that were not skipped; at least $floor are required" >&2

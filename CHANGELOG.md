@@ -9,5 +9,7 @@ Format: wersje SemVer, od najnowszej. Do pierwszego wydania publicznego obowiąz
   `get_page_version`, komentarze, etykiety, załączniki tekstowe, `update_page` z `expectedVersion`, `add_comment`, `add_label`,
   `delete_page` (`DESTRUCTIVE`). `search_pages` ma filtry `title`, `label`, `orderBy` i kursor, wynik w `PagedResult`.
 - Sonda wersji (`server-information`, manifest aplikacji): 8.5 do 10.x wspierane, inne wersje tylko do odczytu.
+- Listy dopełniane po filtrze polityki (`PageFiller`); `list_labels` z `truncated`; okno komentarzy 10 po 4000 znaków.
+- Flaga zapisu tylko dla wersji nieodczytanej; obrazy CI po digeście.
 - Sprawdzenie, że id podrzędne należy do ocenionej strony.
 - Fixture sondy dla 8.5, 9.2, 10.2, 11.0, 7.19; Apache-2.0, `SECURITY.md`, `CONTRIBUTING.md`, release workflow (obraz ghcr.io, SBOM).

@@ -1,8 +1,10 @@
 # Thin wrapper: all logic is in ci/run.sh.
-# A pull request runs unreviewed code: its job holds no secret (MCP_MAVEN_REPOSITORY_URL is a repository variable, not a
-# secret, and the registry is read anonymously) and mounts no Docker socket. The main branch gets the registry
+# A pull request runs unreviewed code: its job holds no secret and mounts no Docker socket. GitHub Packages wants a login
+# also to read, so the job gets the GITHUB_TOKEN of the run with packages: read only (a token of a pull request from a fork
+# has no such right, those builds need the packages to be readable by the repository); MCP_MAVEN_REPOSITORY_URL is a
+# repository variable. The main branch gets the registry
 # credentials (secrets MCP_MAVEN_REPOSITORY_USER and MCP_MAVEN_REPOSITORY_PASSWORD, kept in the environment ci-main so that
-# a pull request cannot read them) and builds the image on the runner. Every action is pinned to a full commit SHA.
+# a pull request cannot read them) and builds the image on the runner. Every action is pinned to a full commit SHA and the build image to its digest.
 name: ci
 on:
   push:
@@ -20,10 +22,13 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      packages: read
     container:
-      image: maven:3.9.12-eclipse-temurin-25
+      image: maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e
     env:
       MCP_MAVEN_REPOSITORY_URL: ${{ vars.MCP_MAVEN_REPOSITORY_URL }}
+      MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
+      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
     steps:
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -39,7 +44,7 @@ jobs:
     permissions:
       contents: read
     container:
-      image: maven:3.9.12-eclipse-temurin-25
+      image: maven:3.9.12-eclipse-temurin-25@sha256:4f82a03a7d6679281952d628131299b1be88d7030a49c6a2b7d2ba2642e44e3e
     env:
       MCP_MAVEN_REPOSITORY_URL: ${{ vars.MCP_MAVEN_REPOSITORY_URL }}
       MCP_MAVEN_REPOSITORY_USER: ${{ secrets.MCP_MAVEN_REPOSITORY_USER }}
