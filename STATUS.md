@@ -12,7 +12,7 @@ M6 (pełny serwer, 2026-11-03): kod gotowy - starter 3.0.0-beta-13 (kontrakty 6.
 
 Poprawki z przeglądu (Z-1 do Z-9): `PageFiller` w czterech listach, flaga zapisu tylko dla `unavailable`, sonda przechodzi do manifestu przy 302, obrazy CI po digeście, `packages: read` w PR na GitHubie, ścieżka pobrania bez segmentów kropkowych, `truncated` w `list_labels`, okno 10 komentarzy po 4000 znaków, komentarz bez `container` odrzucany.
 
-Do zebrania przez koordynatora jako propozycja CC (nie dopisane do mcp-contracts): wyszukiwanie `content/search` bez `type = page` zwraca też komentarze, załączniki i blogi, które serwer odrzuca po odpowiedzi (okna są częściej puste). `type` nie jest polem warunku `StructuredQuery`; potrzebne albo stałe `type = page` w rendererze CQL startera, albo pole `type` w liście normatywnej (kontrakt query-rendering).
+Starter beta-14 (kontrakty 6.3.2) dokleja `AND type = page` do CQL ze `StructuredQuery`; serwer nie dodaje własnej klauzuli typu (jedyne własne CQL, `id in (...) AND type = page` w resolverze, nie przechodzi przez builder), a filtr typu po odpowiedzi zostaje jako obrona w głąb. Propozycja CC o `type` jest zbędna.
 
 Otwarte po M6:
 - Kształty odpowiedzi bez nagrania z instancji (lista w `docs/api/tools-catalog.md`): komentarze (lokalizacja, rodzic), `_links.download`, `ancestors` wersji historycznej, powtórzone `spaceKey` w `/rest/api/space`. Sprawdzić przy pierwszym uruchomieniu u klienta (README).

@@ -1,8 +1,8 @@
 # mcp-confluence: serwer MCP dla Confluence Data Center
 
 Serwer MCP dla systemu `confluence` (Confluence Data Center, REST API v1 `/rest/api/...`), zbudowany na
-`mcp-platform-starter` 3.0.0-beta-13 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
-6.2.1). Jest produktem do wdrożenia obok gateway'a platformy MCP, nie biblioteką: stoi wyłącznie za gateway'em, przyjmuje ruch
+`mcp-platform-starter` 3.0.0-beta-14 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, kontrakty `mcp-contracts`
+6.3.2). Jest produktem do wdrożenia obok gateway'a platformy MCP, nie biblioteką: stoi wyłącznie za gateway'em, przyjmuje ruch
 tylko po mTLS z wewnętrznym JWT gateway'a (C2), a do Confluence woła z osobistym tokenem dostępu (PAT) użytkownika,
 który gateway dołącza do każdego żądania (C3). Bez poprawnego JWT odpowiada 401, nie ma trybu anonimowego.
 

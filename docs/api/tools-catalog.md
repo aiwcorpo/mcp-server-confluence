@@ -41,7 +41,7 @@ różnicy wersji, wyszukiwania po przodku i po zakresie dat (pola poza listą no
 
 | Narzędzie | Żądania |
 | --- | --- |
-| `search_pages` | `GET /rest/api/content/search?cql=...&start=&limit=25&expand=space,version`; CQL z `StructuredQuery`: `(title ~ "..." AND label = "...") AND space in ("KEY") ORDER BY title ASC` |
+| `search_pages` | `GET /rest/api/content/search?cql=...&start=&limit=25&expand=space,version`; CQL z `StructuredQuery`: `(title ~ "..." AND label = "...") AND space in ("KEY") AND type = page ORDER BY title ASC` (`type = page` dokleja starter; filtr typu po odpowiedzi zostaje jako obrona w głąb) |
 | `list_pages` | `GET /rest/api/content?type=page&status=current&spaceKey=&start=&limit=25&expand=space,version` |
 | `list_child_pages` | `GET /rest/api/content/{id}/child/page?start=&limit=25&expand=space,version,ancestors`; zostają tylko strony, których ostatnim przodkiem jest `{id}` |
 | `list_spaces` | `GET /rest/api/space?type=global&status=current&start=&limit=25&expand=metadata.labels` |

@@ -4,7 +4,7 @@ Format: wersje SemVer, od najnowszej. Do pierwszego wydania publicznego obowiąz
 
 ## Niewydane
 
-- Starter 3.0.0-beta-13, kontrakty 6.2.1.
+- Starter 3.0.0-beta-14, kontrakty 6.3.2.
 - 17 narzędzi (było 4): listy stronicowane kursorem (`list_pages`, `list_child_pages`, `list_spaces`), `get_page_by_title`,
   `get_page_version`, komentarze, etykiety, załączniki tekstowe, `update_page` z `expectedVersion`, `add_comment`, `add_label`,
   `delete_page` (`DESTRUCTIVE`). `search_pages` ma filtry `title`, `label`, `orderBy` i kursor, wynik w `PagedResult`.

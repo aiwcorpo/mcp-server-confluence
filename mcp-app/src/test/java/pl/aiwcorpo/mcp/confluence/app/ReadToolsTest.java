@@ -68,7 +68,7 @@ class ReadToolsTest extends ServerTestSupport {
             assertThat(first.get("nextCursor").asString()).isNotBlank();
         }
         assertThat(BACKEND.requests().stream().filter(r -> r.path().endsWith("/search")).findFirst().orElseThrow().query())
-                .containsEntry("cql", "(title ~ \"bulk\" AND label = \"handbook\") AND space in (\"BIG\") ORDER BY title ASC");
+                .containsEntry("cql", "(title ~ \"bulk\" AND label = \"handbook\") AND space in (\"BIG\") AND type = page ORDER BY title ASC");
     }
 
     @Test
