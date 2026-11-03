@@ -3,14 +3,20 @@ package pl.aiwcorpo.mcp.confluence.integration;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -28,24 +34,35 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.util.UriBuilder;
+import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
+import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
+import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.ConfluenceIds;
+import pl.aiwcorpo.mcp.confluence.core.domain.NewComment;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageConflictException;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageNotEditableException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRejectedException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.port.out.ConfluenceResourcePort;
+import pl.aiwcorpo.mcp.platform.error.InvalidToolArgumentException;
 import pl.aiwcorpo.mcp.platform.security.BackendCredential;
 import pl.aiwcorpo.mcp.platform.security.CredentialContext;
-import pl.aiwcorpo.mcp.platform.error.InvalidToolArgumentException;
 import pl.aiwcorpo.mcp.platform.security.CredentialRequiredException;
+import pl.aiwcorpo.mcp.platform.text.TextHygiene;
+import pl.aiwcorpo.mcp.platform.text.UntrustedText;
 
 /**
- * Confluence Data Center REST API ({@code /rest/api/content}) as the calling user: with the personal access
- * token the gateway resolved for this request (C3, {@code Authorization: Bearer}), never with an account of
- * the server.
+ * Confluence Data Center REST API v1 ({@code /rest/api/...}, the same paths from 8.5 to 10.x) as the calling user: with
+ * the personal access token the gateway resolved for this request (C3, {@code Authorization: Bearer}), never with an
+ * account of the server.
  *
  * <p>Error mapping matters for security: 404 and 403 both become "not visible" (one client-facing code,
  * {@code not_found_or_denied}), and 401 means the stored token no longer works, so the user is sent to the
@@ -70,20 +87,38 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     static final String RECORD_EXPAND = "space,version,ancestors";
     static final String SUMMARY_EXPAND = "space,version";
     static final String SPACE_EXPAND = "metadata.labels";
+    static final String COMMENT_EXPAND = "body.storage,version,ancestors,container,extensions.inlineProperties";
+    static final String ATTACHMENT_EXPAND = "version,container";
 
     /** Size limit of the page text handed to the model. */
     static final int MAX_PAGE_TEXT = 50_000;
 
+    /** Size limit of one comment handed to the model. */
+    static final int MAX_COMMENT_TEXT = 10_000;
+
+    /** Attachments larger than this are not downloaded; the model gets the reason instead. */
+    static final long MAX_ATTACHMENT_BYTES = 200_000;
+
+    static final int TITLE_MAX = 255;
+    static final int LABEL_LIST_LIMIT = 200;
+
     private static final String DEV_PROFILE = "dev";
     private static final Logger LOG = LoggerFactory.getLogger(ConfluenceResourceAdapter.class);
 
+    /** Only attachments of the page just checked, only below the download root of Confluence. */
+    private static final Pattern DOWNLOAD_PATH = Pattern.compile("^/download/attachments/[1-9][0-9]{0,18}/[^?#\\s]{1,500}(\\?[A-Za-z0-9=&._%-]{0,300})?$");
+
+    private static final Set<String> TEXT_APPLICATION_TYPES = Set.of("application/json", "application/xml");
+
     private final RestClient client;
+    private final String baseUrl;
 
     public ConfluenceResourceAdapter(ConfluenceBackendProperties properties, ObjectProvider<SslBundles> sslBundles,
             Environment environment) {
+        this.baseUrl = requireBaseUrl(properties.baseUrl(),
+                environment.matchesProfiles(DEV_PROFILE) || properties.allowPlainHttp());
         this.client = RestClient.builder()
-                .baseUrl(requireBaseUrl(properties.baseUrl(),
-                        environment.matchesProfiles(DEV_PROFILE) || properties.allowPlainHttp()))
+                .baseUrl(baseUrl)
                 .requestFactory(requestFactory(properties, sslBundles))
                 // The limit applies to the bytes read, before Jackson and before Jsoup see any of them.
                 .requestInterceptor(new BoundedBodyInterceptor(properties.maxResponseSize().toBytes()))
@@ -104,10 +139,66 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
                 .build();
     }
 
+    // ---- lists ------------------------------------------------------------------------------------------------
+
     @Override
-    public List<PageSummary> searchPages(String cql, int limit) {
-        return search(cql, limit, SUMMARY_EXPAND).stream().map(ContentResponse::toSummary).toList();
+    public Slice<PageSummary> searchPages(String cql, int start, int limit) {
+        SearchResponse response = send(() -> getJson(CONTENT + "/search", Map.of(),
+                        query("cql", cql, "start", start, "limit", limit, "expand", SUMMARY_EXPAND), SearchResponse.class),
+                rejected(() -> new InvalidToolArgumentException(
+                        // Text made only of words CQL reserves; the value stays out of the message (it came from the model).
+                        "Confluence did not accept the search words; try other words"), () -> null));
+        return pageSlice(response, start);
     }
+
+    @Override
+    public Slice<PageSummary> listPages(String spaceKey, int start, int limit) {
+        SearchResponse response = send(() -> getJson(CONTENT, Map.of(),
+                query("type", "page", "status", "current", "spaceKey", spaceKey, "start", start, "limit", limit,
+                        "expand", SUMMARY_EXPAND), SearchResponse.class), hidden(() -> null));
+        return pageSlice(response, start);
+    }
+
+    @Override
+    public Slice<PageSummary> listChildPages(String pageId, int start, int limit) {
+        SearchResponse response = send(() -> getJson(CONTENT + "/{id}/child/page", Map.of("id", pageId),
+                query("start", start, "limit", limit, "expand", SUMMARY_EXPAND), SearchResponse.class),
+                hidden(() -> null));
+        return pageSlice(response, start);
+    }
+
+    @Override
+    public Slice<Space> listSpaces(int start, int limit) {
+        SpaceListResponse response = send(() -> getJson(SPACE, Map.of(),
+                query("type", "global", "status", "current", "start", start, "limit", limit, "expand", SPACE_EXPAND),
+                SpaceListResponse.class), hidden(() -> null));
+        if (response == null || response.results() == null) {
+            return Slice.empty();
+        }
+        List<Space> spaces = response.results().stream()
+                .filter(space -> space.key() != null && ConfluenceIds.isSpaceKey(space.key()))
+                .map(SpaceResponse::toSpace).toList();
+        return new Slice<>(spaces, nextStart(start, response.results().size(), response._links()));
+    }
+
+    private static Slice<PageSummary> pageSlice(SearchResponse response, int start) {
+        if (response == null || response.results() == null) {
+            return Slice.empty();
+        }
+        List<PageSummary> pages = response.results().stream()
+                .map(ContentResponse::withId)
+                .filter(ContentResponse::isCurrentPage)
+                .filter(ContentResponse::isInGlobalSpace)
+                .map(ContentResponse::toSummary)
+                .toList();
+        return new Slice<>(pages, nextStart(start, response.results().size(), response._links()));
+    }
+
+    private static Integer nextStart(int start, int returned, LinksResponse links) {
+        return links != null && links.next() != null && returned > 0 ? start + returned : null;
+    }
+
+    // ---- pages and spaces ---------------------------------------------------------------------------------------
 
     @Override
     public Optional<PageRecord> findPageRecord(String pageId) {
@@ -127,10 +218,17 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         if (!ids.stream().allMatch(ConfluenceIds::isPageId)) {
             throw new IllegalArgumentException("not a page id");
         }
-        List<ContentResponse> found = search(Cql.contentIn(ids), ids.size(), RECORD_EXPAND);
+        SearchResponse response = send(() -> getJson(CONTENT + "/search", Map.of(),
+                        query("cql", Cql.contentIn(ids), "start", 0, "limit", ids.size(), "expand", RECORD_EXPAND),
+                        SearchResponse.class),
+                rejected(() -> new InvalidToolArgumentException("Confluence did not accept the query"), () -> null));
+        if (response == null || response.results() == null) {
+            return Map.of();
+        }
         Map<String, Optional<List<String>>> labelsBySpace = new LinkedHashMap<>();
         Map<String, PageRecord> records = new LinkedHashMap<>();
-        for (ContentResponse content : found) {
+        for (ContentResponse content : response.results().stream().map(ContentResponse::withId)
+                .filter(ContentResponse::isCurrentPage).filter(ContentResponse::isInGlobalSpace).toList()) {
             if (ids.contains(content.id())) {
                 records.put(content.id(), toRecord(content,
                         labelsBySpace.computeIfAbsent(content.spaceKey(), key -> Optional.ofNullable(labelsOf(key))).orElse(null)));
@@ -140,28 +238,53 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @Override
-    public Optional<Space> findSpace(String spaceKey) {
-        BackendCredential credential = credential();
-        try {
-            SpaceResponse response = client.get()
-                    .uri(uri -> uri.path(SPACE + "/{key}").queryParam("expand", SPACE_EXPAND).build(spaceKey))
-                    .headers(credential::applyTo)
-                    .retrieve()
-                    .body(SpaceResponse.class);
-            if (response == null || response.key() == null || response.key().isBlank()) {
-                throw new BackendResponseException("space without key");
-            }
-            return Optional.of(response).filter(space -> ConfluenceIds.isSpaceKey(space.key()))
-                    .map(space -> new Space(space.key(), space.name() == null ? "" : space.name(), space.labelNames()));
-        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
+    public Optional<PageRecord> findPageRecordByTitle(String spaceKey, String title) {
+        SearchResponse response = send(() -> getJson(CONTENT, Map.of(),
+                query("type", "page", "status", "current", "spaceKey", spaceKey, "title", title, "limit", 2,
+                        "expand", RECORD_EXPAND), SearchResponse.class), hidden(() -> null));
+        if (response == null || response.results() == null) {
             return Optional.empty();
-        } catch (HttpClientErrorException.Unauthorized expired) {
-            throw new CredentialRequiredException(SYSTEM);
-        } catch (RestClientResponseException | ResourceAccessException statusOrIo) {
-            throw statusOrIo;
-        } catch (RestClientException unreadable) {
-            throw new BackendResponseException("body not readable");
         }
+        return response.results().stream().map(ContentResponse::withId).filter(ContentResponse::isCurrentPage)
+                .filter(ContentResponse::isInGlobalSpace)
+                .filter(content -> title.equals(content.title()))
+                .findFirst().map(content -> toRecord(content, labelsOf(content.spaceKey())));
+    }
+
+    @Override
+    public Optional<Space> findSpace(String spaceKey) {
+        SpaceResponse response = send(() -> getJson(SPACE + "/{key}", Map.of("key", spaceKey),
+                query("expand", SPACE_EXPAND), SpaceResponse.class), hidden(() -> null));
+        if (response == null) {
+            return Optional.empty();
+        }
+        if (response.key() == null || response.key().isBlank()) {
+            throw new BackendResponseException("space without key");
+        }
+        return Optional.of(response).filter(space -> ConfluenceIds.isSpaceKey(space.key())).map(SpaceResponse::toSpace);
+    }
+
+    @Override
+    public Map<String, Space> findSpaces(Collection<String> spaceKeys) {
+        Set<String> keys = new LinkedHashSet<>(spaceKeys);
+        if (keys.isEmpty()) {
+            return Map.of();
+        }
+        if (!keys.stream().allMatch(ConfluenceIds::isSpaceKey)) {
+            throw new IllegalArgumentException("not a space key");
+        }
+        SpaceListResponse response = send(() -> getJson(SPACE, Map.of(),
+                query("spaceKey", List.copyOf(keys), "limit", keys.size(), "expand", SPACE_EXPAND),
+                SpaceListResponse.class), hidden(() -> null));
+        Map<String, Space> found = new LinkedHashMap<>();
+        if (response != null && response.results() != null) {
+            for (SpaceResponse space : response.results()) {
+                if (space.key() != null && keys.contains(space.key()) && ConfluenceIds.isSpaceKey(space.key())) {
+                    found.put(space.key(), space.toSpace());
+                }
+            }
+        }
+        return found;
     }
 
     @Override
@@ -170,71 +293,16 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @Override
-    public PageSummary createPage(NewPage page) {
-        BackendCredential credential = credential();
-        CreateRequest request = new CreateRequest("page", page.title(), new SpaceRef(page.spaceKey()),
-                List.of(new AncestorRef(page.parentId())),
-                new Body(new Storage(StorageFormat.fromPlainText(page.body()), "storage")));
-        try {
-            ContentResponse created = client.post()
-                    .uri(uri -> uri.path(CONTENT).queryParam("expand", RECORD_EXPAND).build())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .headers(credential::applyTo)
-                    .body(request)
-                    .retrieve()
-                    .body(ContentResponse.class);
-            if (created == null) {
-                throw new BackendResponseException("empty body");
-            }
-            created.withId();
-            requireInsideJudgedTree(created, page);
-            return created.toSummary();
-        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
-            throw new PageNotFoundException();
-        } catch (HttpClientErrorException.Unauthorized expired) {
-            throw new CredentialRequiredException(SYSTEM);
-        } catch (HttpClientErrorException.BadRequest rejected) {
-            throw new PageRejectedException();
-        } catch (RestClientResponseException | ResourceAccessException statusOrIo) {
-            throw statusOrIo;
-        } catch (RestClientException unreadable) {
-            throw new BackendResponseException("body not readable");
+    public Optional<Page> findPageVersion(String pageId, int version) {
+        ContentResponse response = send(() -> getJson(CONTENT + "/{id}", Map.of("id", pageId),
+                query("status", "historical", "version", version, "expand", PAGE_EXPAND), ContentResponse.class),
+                hidden(() -> null));
+        if (response == null) {
+            return Optional.empty();
         }
-    }
-
-    /** The pages a CQL query finds; blog posts, comments and pages of personal spaces are dropped. */
-    private List<ContentResponse> search(String cql, int limit, String expand) {
-        BackendCredential credential = credential();
-        try {
-            SearchResponse response = client.get()
-                    .uri(uri -> uri.path(CONTENT + "/search")
-                            .queryParam("cql", "{cql}")
-                            .queryParam("limit", limit)
-                            .queryParam("expand", expand)
-                            .build(Map.of("cql", cql)))
-                    .headers(credential::applyTo)
-                    .retrieve()
-                    .body(SearchResponse.class);
-            if (response == null || response.results() == null) {
-                throw new BackendResponseException("empty body");
-            }
-            return response.results().stream()
-                    .map(ContentResponse::withId)
-                    .filter(ContentResponse::isCurrentPage)
-                    .filter(ContentResponse::isInGlobalSpace)
-                    .toList();
-        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
-            return List.of();
-        } catch (HttpClientErrorException.Unauthorized expired) {
-            throw new CredentialRequiredException(SYSTEM);
-        } catch (HttpClientErrorException.BadRequest rejected) {
-            // Text made only of words CQL reserves; the value stays out of the message (it came from the model).
-            throw new InvalidToolArgumentException("Confluence did not accept the search words; try other words");
-        } catch (RestClientResponseException | ResourceAccessException statusOrIo) {
-            throw statusOrIo;
-        } catch (RestClientException unreadable) {
-            throw new BackendResponseException("body not readable");
-        }
+        // A stored version has status "historical"; only the type and the space matter here.
+        return Optional.of(response.withId()).filter(ContentResponse::isPage).filter(ContentResponse::isInGlobalSpace)
+                .map(ContentResponse::toPage);
     }
 
     /**
@@ -252,13 +320,199 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
                 summary.lastUpdated(), content.ancestorIds(), spaceLabels);
     }
 
+    private Optional<ContentResponse> fetch(String pageId, String expand) {
+        ContentResponse response = send(() -> getJson(CONTENT + "/{id}", Map.of("id", pageId),
+                query("expand", expand), ContentResponse.class), hidden(() -> null));
+        if (response == null) {
+            return Optional.empty();
+        }
+        return Optional.of(response.withId()).filter(ContentResponse::isCurrentPage)
+                .filter(ContentResponse::isInGlobalSpace);
+    }
+
+    // ---- comments, labels, attachments --------------------------------------------------------------------------
+
+    @Override
+    public Slice<Comment> listComments(String pageId, int start, int limit) {
+        SearchResponse response = send(() -> getJson(CONTENT + "/{id}/child/comment", Map.of("id", pageId),
+                query("depth", "all", "start", start, "limit", limit, "expand", COMMENT_EXPAND), SearchResponse.class),
+                hidden(() -> null));
+        if (response == null || response.results() == null) {
+            return Slice.empty();
+        }
+        List<Comment> comments = response.results().stream().map(ContentResponse::withId)
+                .filter(content -> "comment".equals(content.type()))
+                .map(content -> content.toComment(pageId)).toList();
+        return new Slice<>(comments, nextStart(start, response.results().size(), response._links()));
+    }
+
+    @Override
+    public Optional<Comment> findComment(String commentId) {
+        ContentResponse response = send(() -> getJson(CONTENT + "/{id}", Map.of("id", commentId),
+                query("expand", COMMENT_EXPAND), ContentResponse.class), hidden(() -> null));
+        if (response == null || !"comment".equals(response.withId().type())) {
+            return Optional.empty();
+        }
+        return Optional.of(response.toComment(null));
+    }
+
+    @Override
+    public Comment addComment(NewComment comment) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("type", "comment");
+        body.put("container", Map.of("id", comment.page().id(), "type", "page"));
+        if (comment.parentId() != null) {
+            body.put("ancestors", List.of(Map.of("id", comment.parentId())));
+        }
+        body.put("body", storageBody(StorageFormat.fromPlainText(comment.body())));
+        ContentResponse created = send(() -> postJson(CONTENT, Map.of(), query("expand", COMMENT_EXPAND), body),
+                hiddenOrRejected());
+        return created.withId().toComment(comment.page().id());
+    }
+
+    @Override
+    public List<String> listLabels(String pageId) {
+        LabelListResponse response = send(() -> getJson(CONTENT + "/{id}/label", Map.of("id", pageId),
+                query("limit", LABEL_LIST_LIMIT), LabelListResponse.class), hidden(() -> null));
+        if (response == null || response.results() == null) {
+            return List.of();
+        }
+        return response.results().stream().filter(label -> label.name() != null)
+                .filter(label -> label.prefix() == null || "global".equals(label.prefix()))
+                .map(LabelResponse::name).toList();
+    }
+
+    @Override
+    public void addLabel(String pageId, String label) {
+        send(() -> postJson(CONTENT + "/{id}/label", Map.of("id", pageId), Map.of(),
+                List.of(Map.of("prefix", "global", "name", label)), LabelListResponse.class), hiddenOrRejected());
+    }
+
+    @Override
+    public Slice<Attachment> listAttachments(String pageId, int start, int limit) {
+        SearchResponse response = send(() -> getJson(CONTENT + "/{id}/child/attachment", Map.of("id", pageId),
+                query("start", start, "limit", limit, "expand", "version"), SearchResponse.class), hidden(() -> null));
+        if (response == null || response.results() == null) {
+            return Slice.empty();
+        }
+        List<Attachment> attachments = response.results().stream().map(ContentResponse::withId)
+                .filter(content -> "attachment".equals(content.type())).map(ContentResponse::toAttachment).toList();
+        return new Slice<>(attachments, nextStart(start, response.results().size(), response._links()));
+    }
+
+    @Override
+    public Optional<AttachmentText> readAttachment(String pageId, String attachmentId, int maxChars) {
+        ContentResponse content = send(() -> getJson(CONTENT + "/{id}", Map.of("id", attachmentId),
+                query("expand", ATTACHMENT_EXPAND), ContentResponse.class), hidden(() -> null));
+        if (content == null || !"attachment".equals(content.withId().type()) || content.container() == null
+                || !pageId.equals(content.container().id())) {
+            return Optional.empty();
+        }
+        Attachment attachment = content.toAttachment();
+        if (!isTextMedia(attachment.mediaType())) {
+            return Optional.of(new AttachmentText(attachment, "", false, "binary_attachment"));
+        }
+        if (attachment.fileSize() > MAX_ATTACHMENT_BYTES) {
+            return Optional.of(new AttachmentText(attachment, "", false, "attachment_too_large"));
+        }
+        String download = content.links() == null ? null : content.links().download();
+        if (download == null || !DOWNLOAD_PATH.matcher(download).matches()
+                || !download.startsWith("/download/attachments/" + pageId + "/")) {
+            throw new BackendResponseException("attachment without a usable download link");
+        }
+        byte[] data = send(() -> {
+            byte[] bytes = client.get().uri(URI.create(baseUrl + download)).accept(MediaType.ALL)
+                    .headers(credential()::applyTo).retrieve().body(byte[].class);
+            return bytes == null ? new byte[0] : bytes;
+        }, hidden(() -> null));
+        if (data == null) {
+            return Optional.empty();
+        }
+        String text = TextHygiene.normalize(new String(data, StandardCharsets.UTF_8));
+        String cut = UntrustedText.cut(text, maxChars);
+        return Optional.of(new AttachmentText(attachment, cut, cut.length() < text.length(), null));
+    }
+
+    private static boolean isTextMedia(String mediaType) {
+        if (mediaType == null) {
+            return false;
+        }
+        String base = mediaType.split(";", 2)[0].strip().toLowerCase(Locale.ROOT);
+        return base.startsWith("text/") || TEXT_APPLICATION_TYPES.contains(base);
+    }
+
+    // ---- writes -------------------------------------------------------------------------------------------------
+
+    @Override
+    public PageSummary createPage(NewPage page) {
+        CreateRequest request = new CreateRequest("page", page.title(), new SpaceRef(page.spaceKey()),
+                List.of(new AncestorRef(page.parentId())),
+                new Body(new Storage(StorageFormat.fromPlainText(page.body()), "storage")));
+        ContentResponse created = send(() -> postJson(CONTENT, Map.of(), query("expand", RECORD_EXPAND), request),
+                hiddenOrRejected());
+        created.withId();
+        requireInsideJudgedTree(created, page);
+        return created.toSummary();
+    }
+
+    @Override
+    public PageSummary updatePage(PageEdit edit) {
+        PageRecord judged = edit.judged();
+        ContentResponse current = fetch(judged.id(), PAGE_EXPAND).orElseThrow(PageNotFoundException::new);
+        boolean samePlace = judged.spaceKey().equalsIgnoreCase(current.spaceKey())
+                && judged.ancestorIds().equals(current.ancestorIds());
+        if (!samePlace) {
+            throw new PageNotFoundException();
+        }
+        int storedVersion = current.version() == null ? 0 : current.version().number();
+        if (storedVersion != edit.expectedVersion()) {
+            throw new PageConflictException();
+        }
+        String existing = current.body() == null || current.body().storage() == null ? ""
+                : current.body().storage().value();
+        String written = StorageFormat.fromPlainText(edit.body());
+        String storage;
+        if (edit.mode() == PageEdit.Mode.APPEND) {
+            storage = existing + written;
+        } else {
+            if (!StorageFormat.isPlainParagraphs(existing)) {
+                throw new PageNotEditableException();
+            }
+            storage = written;
+        }
+        String title = edit.title() == null ? current.title() : edit.title();
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("type", "page");
+        request.put("title", title);
+        request.put("version", Map.of("number", edit.expectedVersion() + 1));
+        request.put("body", storageBody(storage));
+        ContentResponse updated = send(() -> putJson(CONTENT + "/{id}", Map.of("id", judged.id()),
+                query("expand", RECORD_EXPAND), request), conflictHiddenOrRejected());
+        updated.withId();
+        return updated.toSummary();
+    }
+
+    @Override
+    public void trashPage(String pageId) {
+        send(() -> {
+            client.delete().uri(uri -> uri.path(CONTENT + "/{id}").build(pageId)).headers(credential()::applyTo)
+                    .retrieve().toBodilessEntity();
+            return Boolean.TRUE;
+        }, e -> {
+            if (isHidden(e)) {
+                throw new PageNotFoundException();
+            }
+            throw e;
+        });
+    }
+
     /**
      * The parent was judged before the write; if it moved in between, Confluence put the page under its new place. The
      * page exists by then and is not deleted (a delete is a write the user never asked for), so the call fails with a
      * line for the audit trail and the client is told only that the result is not usable.
      */
     private static void requireInsideJudgedTree(ContentResponse created, NewPage requested) {
-        List<String> expected = new java.util.ArrayList<>(requested.parentAncestorIds());
+        List<String> expected = new ArrayList<>(requested.parentAncestorIds());
         expected.add(requested.parentId());
         boolean spaceMatches = created.spaceKey() == null || requested.spaceKey().equalsIgnoreCase(created.spaceKey());
         if (!spaceMatches || !expected.equals(created.ancestorIds())) {
@@ -267,28 +521,148 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         }
     }
 
-    private Optional<ContentResponse> fetch(String pageId, String expand) {
-        BackendCredential credential = credential();
+    private static Map<String, Object> storageBody(String storage) {
+        return Map.of("storage", Map.of("value", storage, "representation", "storage"));
+    }
+
+    // ---- version probe ------------------------------------------------------------------------------------------
+
+    /**
+     * A GET without any credential, for the capability probe. Null when the instance answers 401, 403 or 404 (it keeps
+     * that path behind a login or does not have it); other failures propagate and make the probe unavailable.
+     */
+    String readAnonymous(String path, MediaType accept) {
         try {
-            ContentResponse response = client.get()
-                    .uri(uri -> uri.path(CONTENT + "/{id}").queryParam("expand", expand).build(pageId))
-                    .headers(credential::applyTo)
-                    .retrieve()
-                    .body(ContentResponse.class);
-            if (response == null) {
-                throw new BackendResponseException("empty body");
-            }
-            return Optional.of(response.withId()).filter(ContentResponse::isCurrentPage)
-                    .filter(ContentResponse::isInGlobalSpace);
-        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.Forbidden hidden) {
-            return Optional.empty();
+            return client.get().uri(uri -> uri.path(path).build()).accept(accept).retrieve().body(String.class);
+        } catch (HttpClientErrorException notThere) {
+            return null;
+        }
+    }
+
+    // ---- HTTP plumbing ------------------------------------------------------------------------------------------
+
+    private interface ClientErrorHandler<T> {
+        T handle(HttpClientErrorException error);
+    }
+
+    /** Runs one call; the same mapping of failures for all of them, so no body or header ever reaches a message. */
+    private <T> T send(Supplier<T> call, ClientErrorHandler<T> onClientError) {
+        try {
+            return call.get();
         } catch (HttpClientErrorException.Unauthorized expired) {
             throw new CredentialRequiredException(SYSTEM);
+        } catch (HttpClientErrorException other) {
+            return onClientError.handle(other);
         } catch (RestClientResponseException | ResourceAccessException statusOrIo) {
             throw statusOrIo;
         } catch (RestClientException unreadable) {
             throw new BackendResponseException("body not readable");
         }
+    }
+
+    private static boolean isHidden(HttpClientErrorException error) {
+        return error instanceof HttpClientErrorException.NotFound || error instanceof HttpClientErrorException.Forbidden;
+    }
+
+    /** 404 and 403 are "not visible": {@code whenHidden} says what that means for the call. */
+    private static <T> ClientErrorHandler<T> hidden(Supplier<T> whenHidden) {
+        return error -> {
+            if (isHidden(error)) {
+                return whenHidden.get();
+            }
+            throw error;
+        };
+    }
+
+    /** As {@link #hidden}, with 400 turned into an exception of the caller's choice. */
+    private static <T> ClientErrorHandler<T> rejected(Supplier<RuntimeException> onBadRequest, Supplier<T> whenHidden) {
+        return error -> {
+            if (error instanceof HttpClientErrorException.BadRequest) {
+                throw onBadRequest.get();
+            }
+            if (isHidden(error)) {
+                return whenHidden.get();
+            }
+            throw error;
+        };
+    }
+
+    private static <T> ClientErrorHandler<T> hiddenOrRejected() {
+        return rejected(PageRejectedException::new, () -> {
+            throw new PageNotFoundException();
+        });
+    }
+
+    private static <T> ClientErrorHandler<T> conflictHiddenOrRejected() {
+        return error -> {
+            if (error instanceof HttpClientErrorException.Conflict) {
+                throw new PageConflictException();
+            }
+            return ConfluenceResourceAdapter.<T>hiddenOrRejected().handle(error);
+        };
+    }
+
+    /** Query parameters in order; a list value repeats the parameter. */
+    private static Map<String, Object> query(Object... namesAndValues) {
+        Map<String, Object> query = new LinkedHashMap<>();
+        for (int i = 0; i < namesAndValues.length; i += 2) {
+            query.put((String) namesAndValues[i], namesAndValues[i + 1]);
+        }
+        return query;
+    }
+
+    /** Every value goes in as a template variable, so the builder encodes it and nothing from the model is a path part. */
+    private java.util.function.Function<UriBuilder, URI> uriOf(String path, Map<String, Object> pathVariables,
+            Map<String, Object> query) {
+        return builder -> {
+            Map<String, Object> variables = new HashMap<>(pathVariables);
+            builder.path(path);
+            query.forEach((name, value) -> {
+                List<?> values = value instanceof List<?> list ? list : List.of(value);
+                for (int i = 0; i < values.size(); i++) {
+                    String variable = "q_" + name + "_" + i;
+                    builder.queryParam(name, "{" + variable + "}");
+                    variables.put(variable, values.get(i));
+                }
+            });
+            return builder.build(variables);
+        };
+    }
+
+    private <T> T getJson(String path, Map<String, Object> pathVariables, Map<String, Object> query, Class<T> type) {
+        BackendCredential credential = credential();
+        T body = client.get().uri(uriOf(path, pathVariables, query)).headers(credential::applyTo).retrieve().body(type);
+        if (body == null) {
+            throw new BackendResponseException("empty body");
+        }
+        return body;
+    }
+
+    private ContentResponse postJson(String path, Map<String, Object> pathVariables, Map<String, Object> query,
+            Object payload) {
+        return postJson(path, pathVariables, query, payload, ContentResponse.class);
+    }
+
+    private <T> T postJson(String path, Map<String, Object> pathVariables, Map<String, Object> query, Object payload,
+            Class<T> type) {
+        BackendCredential credential = credential();
+        T body = client.post().uri(uriOf(path, pathVariables, query)).contentType(MediaType.APPLICATION_JSON)
+                .headers(credential::applyTo).body(payload).retrieve().body(type);
+        if (body == null) {
+            throw new BackendResponseException("empty body");
+        }
+        return body;
+    }
+
+    private ContentResponse putJson(String path, Map<String, Object> pathVariables, Map<String, Object> query,
+            Object payload) {
+        BackendCredential credential = credential();
+        ContentResponse body = client.put().uri(uriOf(path, pathVariables, query)).contentType(MediaType.APPLICATION_JSON)
+                .headers(credential::applyTo).body(payload).retrieve().body(ContentResponse.class);
+        if (body == null) {
+            throw new BackendResponseException("empty body");
+        }
+        return body;
     }
 
     /**
@@ -319,7 +693,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
             }
             LOG.warn("event=backend_plain_http detail=\"credentials go to the backend unencrypted\"");
         }
-        return baseUrl;
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     }
 
     private static JdkClientHttpRequestFactory requestFactory(ConfluenceBackendProperties properties,
@@ -339,12 +713,22 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     // Confluence's representations; unknown fields are dropped here and never reach the model.
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record SearchResponse(List<ContentResponse> results) {
+    record SearchResponse(List<ContentResponse> results, Integer size, Integer limit, LinksResponse _links) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SpaceListResponse(List<SpaceResponse> results, Integer size, Integer limit, LinksResponse _links) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record ContentResponse(String id, String type, String status, String title, SpaceResponse space,
-                           VersionResponse version, List<AncestorResponse> ancestors, BodyResponse body) {
+                           VersionResponse version, List<AncestorResponse> ancestors, BodyResponse body,
+                           AncestorResponse container, ExtensionsResponse extensions, MetadataResponse metadata,
+                           LinksResponse _links) {
+
+        LinksResponse links() {
+            return _links;
+        }
 
         /** A content record without an id is an unusable answer, not a missing page. */
         ContentResponse withId() {
@@ -354,9 +738,13 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
             return this;
         }
 
+        boolean isPage() {
+            return "page".equals(type);
+        }
+
         /** Blog posts, comments and attachments share the content API; the tools are about pages only. */
         boolean isCurrentPage() {
-            return "page".equals(type) && (status == null || "current".equals(status));
+            return isPage() && (status == null || "current".equals(status));
         }
 
         /**
@@ -386,13 +774,44 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
                     StorageFormat.toText(storage, MAX_PAGE_TEXT));
         }
 
+        Comment toComment(String fallbackPageId) {
+            String storage = body == null || body.storage() == null ? "" : body.storage().value();
+            String parent = ancestorIds().isEmpty() ? null : ancestorIds().getLast();
+            String author = version == null || version.by() == null || version.by().displayName() == null ? ""
+                    : version.by().displayName();
+            String location = extensions != null && "inline".equals(extensions.location()) ? "inline" : "footer";
+            String containerId = container != null && container.id() != null ? container.id() : fallbackPageId;
+            return new Comment(id, containerId, parent, author, version == null ? null : version.when(), location,
+                    StorageFormat.toText(storage, MAX_COMMENT_TEXT));
+        }
+
+        Attachment toAttachment() {
+            String mediaType = extensions != null && extensions.mediaType() != null ? extensions.mediaType()
+                    : metadata != null ? metadata.mediaType() : null;
+            long size = extensions != null && extensions.fileSize() != null ? extensions.fileSize() : 0;
+            return new Attachment(id, title == null ? "" : title, mediaType == null ? "" : mediaType, size,
+                    version == null ? 0 : version.number());
+        }
+
         String spaceKey() {
             return space == null ? null : space.key();
         }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    record ExtensionsResponse(String location, String mediaType, Long fileSize) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record MetadataResponse(String mediaType) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record SpaceResponse(String key, String name, SpaceMetadataResponse metadata) {
+
+        Space toSpace() {
+            return new Space(key, name == null ? "" : name, labelNames());
+        }
 
         /** Label names, or null when the reply has no label list or says there are more than it lists. */
         List<String> labelNames() {
@@ -424,15 +843,23 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record LabelResponse(String name) {
+    record LabelListResponse(List<LabelResponse> results) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record LinksResponse(String next) {
+    record LabelResponse(String prefix, String name) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record VersionResponse(int number, String when) {
+    record LinksResponse(String next, String download) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record UserResponse(String displayName) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record VersionResponse(int number, String when, UserResponse by) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

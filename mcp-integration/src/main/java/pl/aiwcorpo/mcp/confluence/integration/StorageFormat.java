@@ -108,6 +108,28 @@ final class StorageFormat {
         return storage.toString();
     }
 
+    /**
+     * True when the storage is nothing but paragraphs of text and line breaks, i.e. exactly what {@link #fromPlainText}
+     * writes. Replacing such a page with new plain text loses nothing; any other element (macro, table, list, heading,
+     * link, image) would be lost.
+     */
+    static boolean isPlainParagraphs(String storage) {
+        Document document = Jsoup.parse(storage == null ? "" : storage, "", Parser.xmlParser());
+        for (Element element : document.getAllElements()) {
+            if (element == document) {
+                continue;
+            }
+            String tag = element.normalName();
+            boolean paragraph = "p".equals(tag) && element.parent() == document;
+            boolean lineBreak = "br".equals(tag) && element.parent() != null && "p".equals(element.parent().normalName());
+            if (!paragraph && !lineBreak) {
+                return false;
+            }
+        }
+        return document.childNodes().stream().allMatch(node -> node instanceof Element
+                || (node instanceof TextNode text && text.isBlank()));
+    }
+
     private static String macroName(Element macro) {
         String name = macro.attr("ac:name").toLowerCase(Locale.ROOT);
         // The name comes from page content and is echoed to the model; anything unusual is not repeated.

@@ -2,6 +2,9 @@ package pl.aiwcorpo.mcp.confluence.tools;
 
 import java.util.List;
 import org.springframework.lang.Nullable;
+import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
+import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
+import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
@@ -17,6 +20,7 @@ import pl.aiwcorpo.mcp.platform.text.UntrustedText;
 public final class ToolResults {
 
     static final int TITLE_MAX = 255;
+    static final int MEDIA_TYPE_MAX = 100;
 
     private ToolResults() {
     }
@@ -29,7 +33,12 @@ public final class ToolResults {
         }
     }
 
-    public record SearchResult(String spaceKey, List<PageHit> pages) {
+    /** {@code key} is a {@code @ResourceRef}: a space the caller's policy does not allow is dropped from the list. */
+    public record SpaceHit(@ResourceRef(type = "Confluence::Space") String key, UntrustedText name) {
+
+        static SpaceHit of(Space space) {
+            return new SpaceHit(space.key(), UntrustedText.plain(space.name(), TITLE_MAX));
+        }
     }
 
     /** {@code omittedMacros} sits next to {@code body}: the common {@code UntrustedText} has no such field. */
@@ -52,16 +61,68 @@ public final class ToolResults {
         }
     }
 
-    public record CreatedPage(String id, String spaceKey, UntrustedText title, int version) {
+    public record CommentItem(String id, @Nullable String parentId, UntrustedText author, @Nullable String created,
+                              String location, UntrustedText body, List<String> omittedMacros) {
+
+        static CommentItem of(Comment comment) {
+            return new CommentItem(comment.id(), comment.parentId(), UntrustedText.plain(comment.author(), TITLE_MAX),
+                    comment.created(), comment.location(),
+                    UntrustedText.plainCut(comment.body().text(), comment.body().truncated()),
+                    comment.body().omittedMacros());
+        }
+    }
+
+    public record LabelItem(UntrustedText name) {
+    }
+
+    public record LabelsResult(List<LabelItem> labels) {
+
+        static LabelsResult of(List<String> names) {
+            return new LabelsResult(names.stream().map(name -> new LabelItem(UntrustedText.plain(name, 100))).toList());
+        }
+    }
+
+    public record AttachmentItem(String id, UntrustedText title, UntrustedText mediaType, long fileSize, int version) {
+
+        static AttachmentItem of(Attachment attachment) {
+            return new AttachmentItem(attachment.id(), titleText(attachment.title()),
+                    UntrustedText.plain(attachment.mediaType(), MEDIA_TYPE_MAX), attachment.fileSize(),
+                    attachment.version());
+        }
+    }
+
+    /** {@code omitted} is empty when {@code content} is the file's text, else one fixed code saying why it is not. */
+    public record AttachmentContent(String id, UntrustedText title, UntrustedText mediaType, UntrustedText content,
+                                    List<String> omitted) {
+
+        static AttachmentContent of(AttachmentText file) {
+            Attachment attachment = file.attachment();
+            return new AttachmentContent(attachment.id(), titleText(attachment.title()),
+                    UntrustedText.plain(attachment.mediaType(), MEDIA_TYPE_MAX),
+                    UntrustedText.plainCut(file.text(), file.truncated()),
+                    file.omittedReason() == null ? List.of() : List.of(file.omittedReason()));
+        }
+    }
+
+    public record WrittenPage(String id, String spaceKey, UntrustedText title, int version) {
 
         /**
          * A reply without {@code space} must not turn a page that exists into an error: the space asked for is
          * the one the parent was checked against, so it stands in.
          */
-        static CreatedPage of(PageSummary page, String requestedSpaceKey) {
+        static WrittenPage of(PageSummary page, String requestedSpaceKey) {
             String spaceKey = page.spaceKey() == null ? requestedSpaceKey : page.spaceKey();
-            return new CreatedPage(page.id(), spaceKey, titleText(page.title()), page.version());
+            return new WrittenPage(page.id(), spaceKey, titleText(page.title()), page.version());
         }
+    }
+
+    public record AddedComment(String id, String pageId) {
+    }
+
+    public record AddedLabel(String pageId, String label) {
+    }
+
+    public record TrashedPage(String id) {
     }
 
     private static UntrustedText titleText(String title) {

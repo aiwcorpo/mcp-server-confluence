@@ -14,10 +14,14 @@ import org.springframework.util.unit.DataSize;
  * @param maxResponseSize larger bodies are cut off with an error instead of filling the heap
  * @param allowPlainHttp  {@code http} outside the dev profile, for the mocks of mcp-platform-dev only
  *                        ({@code MCP_CONFLUENCE_ALLOW_PLAIN_HTTP}); the credential then crosses the network in clear text
+ * @param allowWritesOnUnknownVersion writes also when the capability probe found no tested version (a Confluence that
+ *                        hides its version, or one newer than 10.x); the operator takes the responsibility
+ *                        ({@code MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION})
  */
 @ConfigurationProperties("confluence.backend")
 public record ConfluenceBackendProperties(String baseUrl, String sslBundle, Duration connectTimeout, Duration readTimeout,
-        DataSize maxResponseSize, boolean allowPlainHttp) {
+        DataSize maxResponseSize, boolean allowPlainHttp,
+        boolean allowWritesOnUnknownVersion) {
 
     public ConfluenceBackendProperties {
         connectTimeout = connectTimeout == null ? Duration.ofSeconds(2) : connectTimeout;

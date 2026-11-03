@@ -1,5 +1,7 @@
 package pl.aiwcorpo.mcp.confluence.integration;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 import pl.aiwcorpo.mcp.cedar.entities.ResolvedResource;
@@ -26,6 +28,11 @@ public class ConfluenceSpaceResolver implements ResourceResolver<Space> {
     @Override
     public Optional<Space> fetch(String spaceKey) {
         return resource.findSpace(spaceKey);
+    }
+
+    @Override
+    public Map<String, Space> fetchAll(Collection<String> spaceKeys) {
+        return resource.findSpaces(spaceKeys);
     }
 
     @Override
