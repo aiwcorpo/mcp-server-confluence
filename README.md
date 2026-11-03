@@ -357,3 +357,11 @@ inaczej gniazdo trafiłoby w ręce merge requestu; w GitHubie sekrety są w Envi
 testami: `CI_TEST_MODULES` (domyślnie `mcp-application mcp-integration mcp-tools mcp-app`), dolna granica dla `mcp-app`: `CI_APP_MIN_TESTS` (104).
 Rejestracja manifestu w gateway'u (`PUT` z certyfikatem `mcp-registry-ci-mcp-confluence`) jest osobnym krokiem pipeline'u
 serwera, bo wymaga sekretu, którego repo nie zawiera.
+
+### Wydanie (GitHub Actions)
+
+`.github/workflows/release.yml` na tagu `v*` buduje obraz `ghcr.io/aiwcorpo/mcp-server-confluence`, dołącza manifest i SBOM do GitHub
+Release. Nie przechowuje osobistego tokenu: joby czytające pakiety platformy używają `GITHUB_TOKEN` z `packages: read`. Raz, dla
+każdego pakietu platformy (`mcp-platform-starter`, `mcp-platform-bom`, `mcp-platform-test`, `mcp-contracts` i jego zależności):
+ustawienia pakietu, "Manage Actions access", dodać repozytorium `mcp-server-confluence` z rolą Read; bez tego `GITHUB_TOKEN` nie
+przeczyta pakietu z innego repozytorium. Środowisko `release` z wymaganymi recenzentami i regułą dla tagów `v*`.

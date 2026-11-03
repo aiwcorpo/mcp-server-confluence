@@ -29,10 +29,11 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      packages: read
     env:
       MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-starter-lib
-      MCP_MAVEN_REPOSITORY_USER: ${{ vars.MCP_CONTRACTS_READ_USER }}
-      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MCP_CONTRACTS_READ_TOKEN }}
+      MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
+      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
     steps:
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -92,10 +93,11 @@ jobs:
     environment: release
     permissions:
       contents: write
+      packages: read
     env:
       MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-starter-lib
-      MCP_MAVEN_REPOSITORY_USER: ${{ vars.MCP_CONTRACTS_READ_USER }}
-      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.MCP_CONTRACTS_READ_TOKEN }}
+      MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
+      MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
     steps:
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
