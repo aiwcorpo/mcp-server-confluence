@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.io.InputStream;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -68,8 +69,12 @@ final class StubBackend {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
+    /** Version profile answered by the probe endpoints; one directory under {@code fixtures/} per release. */
+    private volatile String profile = "confluence-dc-10.2";
+
     private final HttpServer server;
     private final List<Request> requests = new CopyOnWriteArrayList<>();
+    private final List<String> probeAuthorizations = new CopyOnWriteArrayList<>();
     private final List<String> elsewhereHits = new CopyOnWriteArrayList<>();
     private HttpServer elsewhere;
 
@@ -83,6 +88,9 @@ final class StubBackend {
             StubBackend backend = new StubBackend(server);
             server.createContext("/rest/api/content", backend::handle);
             server.createContext("/rest/api/space", backend::handle);
+            server.createContext("/rest/api/server-information", backend::probe);
+            server.createContext("/rest/applinks/1.0/manifest", backend::probe);
+            server.createContext("/download/attachments", backend::download);
             server.start();
             // Target of the redirects: a client that followed them would show up here with its credential.
             backend.elsewhere = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
@@ -102,6 +110,19 @@ final class StubBackend {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }
 
+    /** Switches the release the stub pretends to be (a directory name under {@code fixtures/}). */
+    void profile(String name) {
+        this.profile = name;
+    }
+
+    private String fixture(String file) {
+        try (InputStream in = StubBackend.class.getResourceAsStream("/fixtures/" + profile + "/" + file)) {
+            return in == null ? null : new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new UncheckedIOException(ex);
+        }
+    }
+
     List<Request> requests() {
         return List.copyOf(requests);
     }
@@ -109,6 +130,11 @@ final class StubBackend {
     /** Authorization headers received so far, in order. */
     List<String> authorizations() {
         return requests.stream().map(Request::authorization).toList();
+    }
+
+    /** Authorization headers of the version probe's requests: the probe has no user, so none is sent. */
+    List<String> probeAuthorizations() {
+        return List.copyOf(probeAuthorizations);
     }
 
     List<String> elsewhereHits() {
@@ -129,14 +155,318 @@ final class StubBackend {
 
         if (EXPIRED_CREDENTIAL.equals(authorization)) {
             respond(exchange, 401, error(401, "Unauthorized"));
+        } else if ("/rest/api/space".equals(path)) {
+            spaces(exchange, exchange.getRequestURI().getRawQuery());
         } else if (path.startsWith("/rest/api/space/")) {
             space(exchange, path.substring("/rest/api/space/".length()));
         } else if ("POST".equals(exchange.getRequestMethod()) && "/rest/api/content".equals(path)) {
             create(exchange, JSON.readTree(body));
+        } else if ("/rest/api/content".equals(path)) {
+            listContent(exchange, query);
         } else if ("/rest/api/content/search".equals(path)) {
             search(exchange, query);
         } else {
-            get(exchange, path.substring("/rest/api/content/".length()), query, authorization);
+            String rest = path.substring("/rest/api/content/".length());
+            String[] parts = rest.split("/");
+            String method = exchange.getRequestMethod();
+            if (parts.length == 1 && "PUT".equals(method)) {
+                update(exchange, parts[0], JSON.readTree(body));
+            } else if (parts.length == 1 && "DELETE".equals(method)) {
+                delete(exchange, parts[0]);
+            } else if (parts.length == 3 && "child".equals(parts[1]) && "page".equals(parts[2])) {
+                children(exchange, parts[0], query);
+            } else if (parts.length == 3 && "child".equals(parts[1]) && "comment".equals(parts[2])) {
+                comments(exchange, parts[0], query);
+            } else if (parts.length == 3 && "child".equals(parts[1]) && "attachment".equals(parts[2])) {
+                attachments(exchange, parts[0], query);
+            } else if (parts.length == 2 && "label".equals(parts[1])) {
+                labels(exchange, parts[0], method, body);
+            } else {
+                get(exchange, rest, query, authorization);
+            }
+        }
+    }
+
+
+    // ---- probe, lists, comments, labels, attachments, writes ---------------------------------------------------
+
+    /** {@code server-information} and the applinks manifest of the current profile; a missing file is 403. */
+    private void probe(HttpExchange exchange) throws IOException {
+        probeAuthorizations.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
+        boolean manifest = exchange.getRequestURI().getRawPath().contains("applinks");
+        String body = fixture(manifest ? "manifest.xml" : "server-information.json");
+        if (body == null) {
+            respond(exchange, 403, error(403, "Forbidden"));
+            return;
+        }
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", manifest ? "application/xml" : "application/json;charset=UTF-8");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(bytes);
+        }
+    }
+
+    private void listContent(HttpExchange exchange, Map<String, String> query) throws IOException {
+        List<String> expand = Arrays.asList(query.getOrDefault("expand", "").split(","));
+        String spaceKey = query.get("spaceKey");
+        ObjectNode response = JSON.createObjectNode();
+        ArrayNode results = response.putArray("results");
+        String title = query.get("title");
+        for (Fixture fixture : FIXTURES.values()) {
+            if (spaceKey != null && !spaceKey.equals(fixture.space())) {
+                continue;
+            }
+            if (title != null && !title.equalsIgnoreCase(fixture.title())) {
+                continue;
+            }
+            if ("page".equals(query.get("type")) && !"page".equals(fixture.type())) {
+                continue;
+            }
+            results.add(contentNode(fixture, expand));
+        }
+        window(exchange, response, query, "/rest/api/content");
+    }
+
+    /** Applies {@code start} and {@code limit} to the results array and adds a next link when more remain. */
+    private void window(HttpExchange exchange, ObjectNode response, Map<String, String> query, String self)
+            throws IOException {
+        int start = Integer.parseInt(query.getOrDefault("start", "0"));
+        int limit = Integer.parseInt(query.getOrDefault("limit", "25"));
+        ArrayNode all = (ArrayNode) response.get("results");
+        ArrayNode cut = JSON.createArrayNode();
+        for (int i = start; i < Math.min(all.size(), start + limit); i++) {
+            cut.add(all.get(i));
+        }
+        response.set("results", cut);
+        response.put("start", start).put("limit", limit).put("size", cut.size());
+        ObjectNode links = response.putObject("_links");
+        links.put("self", baseUrl() + self);
+        if (start + limit < all.size()) {
+            links.put("next", self + "?start=" + (start + limit) + "&limit=" + limit);
+        }
+        respond(exchange, 200, response.toString());
+    }
+
+    private void children(HttpExchange exchange, String id, Map<String, String> query) throws IOException {
+        List<String> expand = Arrays.asList(query.getOrDefault("expand", "").split(","));
+        if (!FIXTURES.containsKey(id)) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + id + "}"));
+            return;
+        }
+        ObjectNode response = JSON.createObjectNode();
+        ArrayNode results = response.putArray("results");
+        for (Fixture fixture : FIXTURES.values()) {
+            if ("page".equals(fixture.type()) && !fixture.ancestors().isEmpty()
+                    && fixture.ancestors().getLast().equals(id)) {
+                results.add(contentNode(fixture, expand));
+            }
+        }
+        window(exchange, response, query, "/rest/api/content/" + id + "/child/page");
+    }
+
+    private record CommentFixture(String id, String page, String parent, String author, String location, String storage) {
+    }
+
+    private static final Map<String, CommentFixture> COMMENTS = comments();
+
+    private static Map<String, CommentFixture> comments() {
+        Map<String, CommentFixture> comments = new LinkedHashMap<>();
+        for (CommentFixture comment : List.of(
+                new CommentFixture("7001", "1000", null, "Anna Nowak", "footer", "<p>Looks good.</p>"),
+                new CommentFixture("7002", "1000", "7001", "Jan Kowalski", "footer", "<p>Agreed.</p>"),
+                new CommentFixture("7003", "1000", null, "Anna Nowak", "inline",
+                        "<p>Typo here.</p><ac:structured-macro ac:name=\"include\"><ac:parameter ac:name=\"\">"
+                                + "<ac:link><ri:page ri:space-key=\"HR\" ri:content-title=\"Salaries\" /></ac:link>"
+                                + "</ac:parameter></ac:structured-macro>"),
+                new CommentFixture("7100", "2000", null, "HR Admin", "footer", "<p>" + HR_SECRET + "</p>"))) {
+            comments.put(comment.id(), comment);
+        }
+        return comments;
+    }
+
+    private ObjectNode comment(CommentFixture comment, List<String> expand) {
+        ObjectNode node = JSON.createObjectNode().put("id", comment.id()).put("type", "comment")
+                .put("status", "current").put("title", "Re: page " + comment.page());
+        node.putObject("container").put("id", comment.page()).put("type", "page");
+        ArrayNode ancestors = node.putArray("ancestors");
+        if (comment.parent() != null) {
+            ancestors.addObject().put("id", comment.parent()).put("type", "comment");
+        }
+        ObjectNode version = node.putObject("version");
+        version.putObject("by").put("type", "known").put("displayName", comment.author());
+        version.put("when", "2026-10-21T08:00:00.000+02:00").put("number", 1);
+        node.putObject("body").putObject("storage").put("value", comment.storage()).put("representation", "storage");
+        node.putObject("extensions").put("location", comment.location());
+        return node;
+    }
+
+    private void comments(HttpExchange exchange, String pageId, Map<String, String> query) throws IOException {
+        if (!FIXTURES.containsKey(pageId)) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + pageId + "}"));
+            return;
+        }
+        ObjectNode response = JSON.createObjectNode();
+        ArrayNode results = response.putArray("results");
+        COMMENTS.values().stream().filter(c -> c.page().equals(pageId))
+                .forEach(c -> results.add(comment(c, List.of())));
+        window(exchange, response, query, "/rest/api/content/" + pageId + "/child/comment");
+    }
+
+    private static final Map<String, List<String>> PAGE_LABELS = Map.of("1000", List.of("handbook", "release"));
+
+    private void labels(HttpExchange exchange, String pageId, String method, String body) throws IOException {
+        if (!FIXTURES.containsKey(pageId)) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + pageId + "}"));
+            return;
+        }
+        ObjectNode response = JSON.createObjectNode();
+        ArrayNode results = response.putArray("results");
+        if ("POST".equals(method)) {
+            JSON.readTree(body).forEach(label -> results.addObject().put("prefix", label.path("prefix").asString())
+                    .put("name", label.path("name").asString()));
+        } else {
+            PAGE_LABELS.getOrDefault(pageId, List.of()).forEach(name -> results.addObject().put("prefix", "global")
+                    .put("name", name).put("id", "1").put("label", name));
+            if ("1000".equals(pageId)) {
+                results.addObject().put("prefix", "my").put("name", "private-note").put("id", "2").put("label", "my:private-note");
+            }
+        }
+        response.put("start", 0).put("limit", 200).put("size", results.size());
+        respond(exchange, 200, response.toString());
+    }
+
+    private record AttachmentFixture(String id, String page, String title, String mediaType, long size, String text) {
+    }
+
+    private static final Map<String, AttachmentFixture> ATTACHMENTS = attachments();
+
+    private static Map<String, AttachmentFixture> attachments() {
+        Map<String, AttachmentFixture> attachments = new LinkedHashMap<>();
+        for (AttachmentFixture attachment : List.of(
+                new AttachmentFixture("att5001", "1001", "notes.txt", "text/plain", 15, "Deploy at 10:00"),
+                new AttachmentFixture("att5002", "1001", "diagram.png", "image/png", 3000, null),
+                new AttachmentFixture("att5003", "1001", "dump.csv", "text/csv", 500_000, "a,b"),
+                new AttachmentFixture("att5100", "2000", "salaries.txt", "text/plain", 30, HR_SECRET))) {
+            attachments.put(attachment.id(), attachment);
+        }
+        return attachments;
+    }
+
+    private ObjectNode attachment(AttachmentFixture attachment, List<String> expand) {
+        ObjectNode node = JSON.createObjectNode().put("id", attachment.id()).put("type", "attachment")
+                .put("status", "current").put("title", attachment.title());
+        node.putObject("container").put("id", attachment.page()).put("type", "page");
+        node.putObject("version").put("number", 1).put("when", "2026-10-22T09:00:00.000+02:00");
+        node.putObject("extensions").put("mediaType", attachment.mediaType()).put("fileSize", attachment.size());
+        node.putObject("_links").put("download", "/download/attachments/" + attachment.page() + "/" + attachment.title()
+                + "?version=1&modificationDate=1760000000000&api=v2");
+        return node;
+    }
+
+    private void attachments(HttpExchange exchange, String pageId, Map<String, String> query) throws IOException {
+        if (!FIXTURES.containsKey(pageId)) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + pageId + "}"));
+            return;
+        }
+        ObjectNode response = JSON.createObjectNode();
+        ArrayNode results = response.putArray("results");
+        ATTACHMENTS.values().stream().filter(a -> a.page().equals(pageId))
+                .forEach(a -> results.add(attachment(a, List.of())));
+        window(exchange, response, query, "/rest/api/content/" + pageId + "/child/attachment");
+    }
+
+    private void download(HttpExchange exchange) throws IOException {
+        String authorization = String.valueOf(exchange.getRequestHeaders().getFirst("Authorization"));
+        String path = exchange.getRequestURI().getRawPath();
+        requests.add(new Request("GET", path, Map.of(), authorization, ""));
+        String[] parts = path.split("/");
+        AttachmentFixture found = ATTACHMENTS.values().stream()
+                .filter(a -> a.page().equals(parts[3]) && a.title().equals(parts[4])).findFirst().orElse(null);
+        if (found == null || found.text() == null) {
+            respond(exchange, 404, error(404, "no file"));
+            return;
+        }
+        byte[] bytes = found.text().getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", found.mediaType());
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(bytes);
+        }
+    }
+
+    /** Stored versions of 1001: 2 exists, the rest do not. */
+    private void historical(HttpExchange exchange, String id, String version, List<String> expand) throws IOException {
+        Fixture current = FIXTURES.get(id);
+        if (current == null || !"2".equals(version) || !"1001".equals(id)) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + id + "}"));
+            return;
+        }
+        ObjectNode content = contentNode(new Fixture(id, "page", current.space(), current.title(), 2, List.of(),
+                "<p>Release 2.0 ships on Monday.</p>", null), expand);
+        content.put("status", "historical");
+        respond(exchange, 200, content.toString());
+    }
+
+    private void spaces(HttpExchange exchange, String rawQuery) throws IOException {
+        Map<String, String> query = query(rawQuery);
+        List<String> wanted = new java.util.ArrayList<>();
+        if (rawQuery != null) {
+            for (String pair : rawQuery.split("&")) {
+                if (pair.startsWith("spaceKey=")) {
+                    wanted.add(URLDecoder.decode(pair.substring("spaceKey=".length()), StandardCharsets.UTF_8));
+                }
+            }
+        }
+        ObjectNode response = JSON.createObjectNode();
+        ArrayNode results = response.putArray("results");
+        for (String key : SPACE_LABELS.keySet()) {
+            if (!wanted.isEmpty() && !wanted.contains(key)) {
+                continue;
+            }
+            List<String> labels = SPACE_LABELS.get(key);
+            ObjectNode space = results.addObject().put("id", 98306).put("key", key).put("name", key + " space")
+                    .put("type", "global").put("status", "current");
+            if (labels != null) {
+                ObjectNode listing = space.putObject("metadata").putObject("labels");
+                ArrayNode labelResults = listing.putArray("results");
+                labels.forEach(label -> labelResults.addObject().put("prefix", "global").put("name", label));
+                listing.put("start", 0).put("limit", 200).put("size", labels.size());
+            }
+        }
+        window(exchange, response, query, "/rest/api/space");
+    }
+
+    /** PUT: the version number in the request must be the stored one plus one, else 409 as Confluence answers. */
+    private void update(HttpExchange exchange, String id, JsonNode request) throws IOException {
+        Fixture fixture = FIXTURES.get(id);
+        if (fixture == null || !"page".equals(fixture.type())) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + id + "}"));
+            return;
+        }
+        if ("Existing".equals(request.path("title").asString())) {
+            respond(exchange, 400, error(400, "A page already exists with the title Existing"));
+            return;
+        }
+        if (request.path("version").path("number").asInt() != fixture.version() + 1) {
+            respond(exchange, 409, error(409, "Version must be incremented on update. Current version is: "
+                    + fixture.version()));
+            return;
+        }
+        respond(exchange, 200, content(new Fixture(id, "page", fixture.space(), request.path("title").asString(),
+                fixture.version() + 1, fixture.ancestors(),
+                request.path("body").path("storage").path("value").asString(), null),
+                List.of("space", "version", "ancestors")));
+    }
+
+    private void delete(HttpExchange exchange, String id) throws IOException {
+        if ("1403".equals(id)) {
+            respond(exchange, 403, error(403, "Forbidden"));
+        } else if (!FIXTURES.containsKey(id)) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + id + "}"));
+        } else {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
         }
     }
 
@@ -144,6 +474,18 @@ final class StubBackend {
             throws IOException {
         List<String> expand = Arrays.asList(query.getOrDefault("expand", "").split(","));
         Fixture fixture = FIXTURES.get(id);
+        if ("historical".equals(query.get("status"))) {
+            historical(exchange, id, query.get("version"), expand);
+            return;
+        }
+        if (COMMENTS.containsKey(id)) {
+            respond(exchange, 200, comment(COMMENTS.get(id), expand).toString());
+            return;
+        }
+        if (ATTACHMENTS.containsKey(id)) {
+            respond(exchange, 200, attachment(ATTACHMENTS.get(id), expand).toString());
+            return;
+        }
         if (fixture != null) {
             respond(exchange, 200, content(fixture, expand));
             return;
@@ -209,6 +551,17 @@ final class StubBackend {
     }
 
     private void create(HttpExchange exchange, JsonNode request) throws IOException {
+        if ("comment".equals(request.path("type").asString())) {
+            String page = request.path("container").path("id").asString();
+            if (!FIXTURES.containsKey(page)) {
+                respond(exchange, 404, error(404, "No content found"));
+                return;
+            }
+            String parent = request.path("ancestors").path(0).path("id").asString(null);
+            respond(exchange, 200, comment(new CommentFixture("7999", page, parent, "Test User", "footer",
+                    request.path("body").path("storage").path("value").asString()), List.of()).toString());
+            return;
+        }
         String space = request.path("space").path("key").asString();
         String title = request.path("title").asString();
         if ("LOCKED".equals(space)) {

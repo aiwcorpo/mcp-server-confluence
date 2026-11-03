@@ -24,6 +24,40 @@ import tools.jackson.databind.json.JsonMapper;
 class ManifestTest extends ServerTestSupport {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    /** The reviewed catalog: ws-09 writes the Cedar policies from exactly this table. */
+    static final Map<String, String> RISKS = Map.ofEntries(
+            Map.entry("search_pages", "READ_ONLY"), Map.entry("list_pages", "READ_ONLY"),
+            Map.entry("list_child_pages", "READ_ONLY"), Map.entry("list_spaces", "READ_ONLY"),
+            Map.entry("get_page", "READ_ONLY"), Map.entry("get_page_by_title", "READ_ONLY"),
+            Map.entry("get_space", "READ_ONLY"), Map.entry("get_page_version", "READ_ONLY"),
+            Map.entry("list_comments", "READ_ONLY"), Map.entry("list_labels", "READ_ONLY"),
+            Map.entry("list_attachments", "READ_ONLY"), Map.entry("read_attachment", "READ_ONLY"),
+            Map.entry("create_page", "UPDATE"), Map.entry("update_page", "UPDATE"),
+            Map.entry("add_comment", "UPDATE"), Map.entry("add_label", "UPDATE"),
+            Map.entry("delete_page", "DESTRUCTIVE"));
+
+    static final Map<String, String> REFS = Map.ofEntries(
+            Map.entry("search_pages", "space:Confluence::Space"), Map.entry("list_pages", "space:Confluence::Space"),
+            Map.entry("list_child_pages", "pageId:Confluence::Page"), Map.entry("list_spaces", ""),
+            Map.entry("get_page", "pageId:Confluence::Page"), Map.entry("get_page_by_title", "space:Confluence::Space"),
+            Map.entry("get_space", "space:Confluence::Space"), Map.entry("get_page_version", "pageId:Confluence::Page"),
+            Map.entry("list_comments", "pageId:Confluence::Page"), Map.entry("list_labels", "pageId:Confluence::Page"),
+            Map.entry("list_attachments", "pageId:Confluence::Page"), Map.entry("read_attachment", "pageId:Confluence::Page"),
+            Map.entry("create_page", "parentId:Confluence::Page,space:Confluence::Space"),
+            Map.entry("update_page", "pageId:Confluence::Page"), Map.entry("add_comment", "pageId:Confluence::Page"),
+            Map.entry("add_label", "pageId:Confluence::Page"), Map.entry("delete_page", "pageId:Confluence::Page"));
+
+    static final Map<String, String> TITLES = Map.ofEntries(
+            Map.entry("search_pages", "Szukaj stron"), Map.entry("list_pages", "Lista stron przestrzeni"),
+            Map.entry("list_child_pages", "Lista stron podrzędnych"), Map.entry("list_spaces", "Lista przestrzeni"),
+            Map.entry("get_page", "Pobierz stronę"), Map.entry("get_page_by_title", "Pobierz stronę po tytule"),
+            Map.entry("get_space", "Pobierz przestrzeń"), Map.entry("get_page_version", "Pobierz wersję strony"),
+            Map.entry("list_comments", "Lista komentarzy"), Map.entry("list_labels", "Lista etykiet strony"),
+            Map.entry("list_attachments", "Lista załączników"), Map.entry("read_attachment", "Odczytaj załącznik tekstowy"),
+            Map.entry("create_page", "Utwórz stronę"), Map.entry("update_page", "Zmień stronę"),
+            Map.entry("add_comment", "Dodaj komentarz"), Map.entry("add_label", "Dodaj etykietę"),
+            Map.entry("delete_page", "Usuń stronę"));
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build();
 
     private HttpResponse<String> get(String path, Map<String, String> headers) throws Exception {
@@ -142,6 +176,7 @@ class ManifestTest extends ServerTestSupport {
         for (JsonNode tool : manifest().get("tools")) {
             String name = tool.get("name").asString();
             risks.put(name, tool.get("risk").asString());
+            refs.put(name, "");
             if (tool.has("resourceRefs")) {
                 List<String> declared = new ArrayList<>();
                 tool.get("resourceRefs").forEach(ref -> declared.add(ref.get("argument").asString() + ":" + ref.get("type").asString()));
@@ -150,11 +185,8 @@ class ManifestTest extends ServerTestSupport {
             }
         }
 
-        assertThat(risks).containsOnly(Map.entry("search_pages", "READ_ONLY"), Map.entry("get_page", "READ_ONLY"),
-                Map.entry("get_space", "READ_ONLY"), Map.entry("create_page", "UPDATE"));
-        assertThat(refs).containsOnly(Map.entry("search_pages", "space:Confluence::Space"),
-                Map.entry("get_page", "pageId:Confluence::Page"), Map.entry("get_space", "space:Confluence::Space"),
-                Map.entry("create_page", "parentId:Confluence::Page,space:Confluence::Space"));
+        assertThat(risks).isEqualTo(RISKS);
+        assertThat(refs).isEqualTo(REFS);
     }
 
     @Test
@@ -163,8 +195,7 @@ class ManifestTest extends ServerTestSupport {
         for (JsonNode tool : manifest().get("tools")) {
             titles.put(tool.get("name").asString(), tool.at("/definition/title").asString());
         }
-        assertThat(titles).containsOnly(Map.entry("search_pages", "Szukaj stron"), Map.entry("get_page", "Pobierz stronę"),
-                Map.entry("get_space", "Pobierz przestrzeń"), Map.entry("create_page", "Utwórz stronę"));
+        assertThat(titles).isEqualTo(TITLES);
     }
 
     @Test

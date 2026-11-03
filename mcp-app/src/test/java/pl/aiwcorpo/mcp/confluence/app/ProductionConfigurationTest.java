@@ -43,7 +43,7 @@ class ProductionConfigurationTest {
         assertThatCode(() -> adapter("https://backend.internal", new MockEnvironment())).doesNotThrowAnyException();
 
         assertThatCode(() -> new ConfluenceResourceAdapter(
-                new ConfluenceBackendProperties("http://confluence.internal:8080", null, null, null, null, true),
+                new ConfluenceBackendProperties("http://confluence.internal:8080", null, null, null, null, true, false),
                 new DefaultListableBeanFactory().getBeanProvider(SslBundles.class), new MockEnvironment()))
                 .as("explicit opt-in for the dev environment's mocks").doesNotThrowAnyException();
 
@@ -60,7 +60,7 @@ class ProductionConfigurationTest {
     }
 
     private static ConfluenceResourceAdapter adapter(String baseUrl, MockEnvironment environment) {
-        return new ConfluenceResourceAdapter(new ConfluenceBackendProperties(baseUrl, null, null, null, null, false),
+        return new ConfluenceResourceAdapter(new ConfluenceBackendProperties(baseUrl, null, null, null, null, false, false),
                 new DefaultListableBeanFactory().getBeanProvider(SslBundles.class), environment);
     }
 }

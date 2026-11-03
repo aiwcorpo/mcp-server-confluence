@@ -160,7 +160,7 @@ class ResourcePolicyTest extends ServerTestSupport {
             McpSchema.CallToolResult result = call(client, "search_pages", Map.of("space", "FAIL", "text", "FAIL"));
 
             assertThat(result.isError()).isFalse();
-            assertThat(text(result)).contains("\"pages\":[]").doesNotContain("Failing");
+            assertThat(text(result)).contains("\"items\":[]").doesNotContain("Failing");
         }
     }
 

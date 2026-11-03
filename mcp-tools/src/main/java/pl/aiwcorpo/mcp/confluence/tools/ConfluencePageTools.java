@@ -129,9 +129,6 @@ public class ConfluencePageTools {
         if (orderBy != null) {
             query.orderBy(orderBy, "title".equals(orderBy) ? Direction.ASC : Direction.DESC);
         }
-        if (scope.nothingToQuery()) {
-            return PagedResult.of(List.of(), null);
-        }
         var page = useCase.searchPages(spaceKey, query.build(), start);
         return PagedResult.of(page.items().stream().map(PageHit::of).toList(), nextCursor(page.nextStart(), SEARCH_TOOL, fingerprint));
     }
@@ -157,7 +154,7 @@ public class ConfluencePageTools {
     @Tool(name = "list_child_pages", description = "Lists the direct child pages of a Confluence page, up to 25 per "
             + "call, each with id, title, version and last update time, and nextCursor when more follow.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista stron podrzednych")
+    @ToolTitle("Lista stron podrzędnych")
     public PagedResult<PageHit> listChildPages(
             @ToolParam(description = "Id of the parent page, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -290,7 +287,7 @@ public class ConfluencePageTools {
             + "id, file name, media type, size in bytes and version, and nextCursor when more follow. File contents "
             + "are not part of the list.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista zalacznikow")
+    @ToolTitle("Lista załączników")
     public PagedResult<AttachmentItem> listAttachments(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -309,7 +306,7 @@ public class ConfluencePageTools {
             + "200000 bytes) of a Confluence page, cut at 50000 characters (content.truncated). Other files are not "
             + "returned: omitted holds binary_attachment or attachment_too_large and content is empty.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Odczytaj zalacznik tekstowy")
+    @ToolTitle("Odczytaj załącznik tekstowy")
     public AttachmentContent readAttachment(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")

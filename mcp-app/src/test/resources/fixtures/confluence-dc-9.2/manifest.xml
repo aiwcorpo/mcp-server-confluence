@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<manifest xmlns="http://atlassian.com/applinks/manifest">
+  <id>3f1a2b4c-0000-4000-8000-000000000092</id>
+  <name>Confluence</name>
+  <typeId>confluence</typeId>
+  <version>9.2.3</version>
+  <buildNumber>9020</buildNumber>
+  <applinksVersion>6.0.0</applinksVersion>
+  <inboundAuthenticationTypes>com.atlassian.applinks.api.auth.types.OAuthAuthenticationProvider</inboundAuthenticationTypes>
+  <publicSignup>false</publicSignup>
+</manifest>

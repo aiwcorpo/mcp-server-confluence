@@ -14,11 +14,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import pl.aiwcorpo.mcp.platform.capability.BackendCapabilities;
+import pl.aiwcorpo.mcp.platform.capability.Capabilities;
 import pl.aiwcorpo.mcp.platform.test.TestGateway;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -54,6 +58,42 @@ abstract class ServerTestSupport {
         // Short limits so the timeout and size tests run quickly; StubBackend's slow and huge pages exceed them.
         registry.add("confluence.backend.read-timeout", () -> "1s");
         registry.add("confluence.backend.max-response-size", () -> "64KB");
+        // The version probe repeats every second, so a test that switches the stub to another release sees it quickly.
+        registry.add("aiwcorpo.mcp.platform.capability.interval", () -> "1s");
+        registry.add("aiwcorpo.mcp.platform.capability.retry-interval", () -> "1s");
+    }
+
+    static final String DEFAULT_PROFILE = "confluence-dc-10.2";
+
+    @Autowired
+    BackendCapabilities capabilities;
+
+    /** Every test starts against Confluence 10.2, whatever profile the previous one left behind. */
+    @BeforeEach
+    void backendIsTheDefaultRelease() throws InterruptedException {
+        useBackendRelease(DEFAULT_PROFILE, Capabilities.State.SUPPORTED);
+    }
+
+    /** Switches the stub to a release and waits until the probe has seen it. */
+    void useBackendRelease(String profile, Capabilities.State expected) throws InterruptedException {
+        BACKEND.profile(profile);
+        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+        while (!reports(expected, versionOf(profile))) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("the probe did not report " + expected + " for " + profile + ": "
+                        + capabilities.of("confluence"));
+            }
+            Thread.sleep(100);
+        }
+    }
+
+    private boolean reports(Capabilities.State expected, String version) {
+        Capabilities now = capabilities.of("confluence");
+        return now.state() == expected && now.backendVersion() != null && now.backendVersion().startsWith(version);
+    }
+
+    private static String versionOf(String profile) {
+        return profile.substring(profile.lastIndexOf('-') + 1);
     }
 
     @LocalServerPort
