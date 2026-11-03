@@ -3,14 +3,17 @@
 # yet: the repository and the organization packages do not exist at the time of writing, so the workflow is checked by
 # reading, not by a run.
 #
-# Setup, once: environment "release" with required reviewers and a deployment rule for tags v*; repository secret
-# MCP_CONTRACTS_READ_TOKEN (read:packages only) and variable MCP_CONTRACTS_READ_USER, repository-level on purpose so that job
-# verify, which has no environment, can read the platform packages.
+# Setup, once: environment "release" with required reviewers and a deployment rule for tags v*. No personal access token is
+# stored: the jobs that read the platform packages use the GITHUB_TOKEN of the run with packages: read. Each of the packages
+# (mcp-platform-starter, mcp-platform-bom, mcp-platform-test, mcp-contracts and what it brings) must allow this repository:
+# package settings, "Manage Actions access", add mcp-server-confluence with the role Read. Without that grant the token
+# cannot read a package of another repository, and the workflow fails at the first Maven resolution.
 #
-# Four jobs: verify runs the tests with contents: read and the read-only token and hands over the jar and the manifest;
-# publish has packages: write, no build cache, and the write token only in the environment of the push step; sbom has contents: read and
-# packages: read and runs Maven; release has contents: write, runs no build tool and holds the token only in the step that
-# creates the GitHub Release.
+# Five jobs, each with the rights of its own work only: verify runs the tests with contents: read and packages: read and
+# hands over the jar and the manifest; image builds the image with contents: read and hands it over as a tarball (docker
+# save); publish has packages: write, runs no build and no repository code (docker load, login, push) and holds the token
+# only in the environment of that step; sbom has contents: read and packages: read and runs Maven; release has contents:
+# write, runs no build tool and holds the token only in the step that creates the GitHub Release.
 name: release
 
 on:
