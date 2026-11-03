@@ -30,7 +30,7 @@ jdk_is_25() {
   [[ -n "$major" ]] && [[ "${major%%.*}" -ge 25 ]] 2>/dev/null
 }
 
-# The build needs Java 25. Keeps the current JDK when it is new enough, otherwise looks in the usual places (macOS
+# The build needs Java 25; only verify calls this, because the image step runs where there is no JDK (docker:27-cli). Keeps the current JDK when it is new enough, otherwise looks in the usual places (macOS
 # java_home, Homebrew, /usr/lib/jvm, SDKMAN, IntelliJ); JAVA_HOME set to a JDK 25 skips the search.
 select_jdk() {
   local candidate
@@ -70,8 +70,6 @@ select_jdk() {
   echo "ci/run.sh: JDK 25 not found; set JAVA_HOME to a JDK 25 or use the maven:3.9.12-eclipse-temurin-25 image" >&2
   return 1
 }
-
-select_jdk
 
 # Maven settings file for the registry: with credentials only when the pipeline holds them (main), anonymous otherwise.
 maven_settings() {
@@ -163,6 +161,7 @@ require_manifest() {
 }
 
 verify() {
+  select_jdk
   hygiene
   mvnw clean verify
   require_tests_ran
