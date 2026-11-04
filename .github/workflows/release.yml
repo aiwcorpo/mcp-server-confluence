@@ -1,19 +1,15 @@
 # Builds the image of a tagged release, pushes it to ghcr.io/aiwcorpo/mcp-server-confluence and attaches the registration
-# manifest and the SBOM (CycloneDX) to the GitHub Release. Runs only on a v* tag; nothing is pushed from branches. Not run
-# yet: the repository and the organization packages do not exist at the time of writing, so the workflow is checked by
-# reading, not by a run.
+# manifest and the SBOM (CycloneDX) to the GitHub Release. Runs only on a v* tag; nothing is pushed from branches. The
+# platform artifacts come from Maven Central, so no job reads a package registry and none needs packages: read.
 #
 # Setup, once: environment "release" with required reviewers and a deployment rule for tags v*. No personal access token is
-# stored: the jobs that read the platform packages use the GITHUB_TOKEN of the run with packages: read. Each of the packages
-# (mcp-platform-starter, mcp-platform-bom, mcp-platform-test, mcp-contracts and what it brings) must allow this repository:
-# package settings, "Manage Actions access", add mcp-server-confluence with the role Read. Without that grant the token
-# cannot read a package of another repository, and the workflow fails at the first Maven resolution.
+# stored.
 #
-# Five jobs, each with the rights of its own work only: verify runs the tests with contents: read and packages: read and
-# hands over the jar and the manifest; image builds the image with contents: read and hands it over as a tarball (docker
-# save); publish has packages: write, runs no build and no repository code (docker load, login, push) and holds the token
-# only in the environment of that step; sbom has contents: read and packages: read and runs Maven; release has contents:
-# write, runs no build tool and holds the token only in the step that creates the GitHub Release.
+# Five jobs, each with the rights of its own work only: verify runs the tests with contents: read and hands over the jar and
+# the manifest; image builds the image with contents: read and hands it over as a tarball (docker save); publish has
+# packages: write, runs no build and no repository code (docker load, login, push) and holds the token only in the
+# environment of that step; sbom has contents: read and runs Maven; release has contents: write, runs no build tool and holds
+# the token only in the step that creates the GitHub Release.
 name: release
 
 on:
@@ -33,7 +29,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      packages: read
     steps:
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -50,10 +45,6 @@ jobs:
           test "$(./mvnw -q -B -N org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=project.version -DforceStdout)" = "$version"
       - name: Verify (tests, manifest)
         run: ci/run.sh verify
-        env:
-          MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-starter-lib
-          MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
-          MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       # actions/upload-artifact v4.6.2
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -115,7 +106,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      packages: read
     steps:
       # actions/checkout v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -127,11 +117,7 @@ jobs:
           distribution: temurin
           java-version: '25'
       - name: SBOM (CycloneDX)
-        run: ./mvnw -B -s .ci/settings.xml org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
-        env:
-          MCP_MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/aiwcorpo/mcp-starter-lib
-          MCP_MAVEN_REPOSITORY_USER: ${{ github.actor }}
-          MCP_MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: ./mvnw -B org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom
       # actions/upload-artifact v4.6.2
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
