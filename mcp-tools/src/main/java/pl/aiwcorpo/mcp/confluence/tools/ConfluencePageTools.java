@@ -100,7 +100,7 @@ public class ConfluencePageTools {
             + "nextCursor when more follow. Characters other than letters, digits, spaces, '.', '_' and apostrophes "
             + "in text and title are treated as spaces.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Szukaj stron")
+    @ToolTitle("Search pages")
     public PagedResult<PageHit> searchPages(
             @ToolParam(description = "Key of the space to search, letters and digits only")
             @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
@@ -140,7 +140,7 @@ public class ConfluencePageTools {
     @Tool(name = "list_pages", description = "Lists the current pages of one Confluence space in Confluence's own "
             + "order, about 25 per call, each with id, title, version and last update time, and nextCursor when more follow.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista stron przestrzeni")
+    @ToolTitle("List pages")
     public PagedResult<PageHit> listPages(
             @ToolParam(description = "Key of the space, letters and digits only")
             @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
@@ -157,7 +157,7 @@ public class ConfluencePageTools {
     @Tool(name = "list_child_pages", description = "Lists the direct child pages of a Confluence page, about 25 per "
             + "call, each with id, title, version and last update time, and nextCursor when more follow.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista stron podrzędnych")
+    @ToolTitle("List child pages")
     public PagedResult<PageHit> listChildPages(
             @ToolParam(description = "Id of the parent page, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -174,7 +174,7 @@ public class ConfluencePageTools {
     @Tool(name = "list_spaces", description = "Lists the global Confluence spaces the user can see, about 25 per call, "
             + "each with key and name, and nextCursor when more follow. Personal spaces are not listed.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista przestrzeni")
+    @ToolTitle("List spaces")
     public PagedResult<SpaceHit> listSpaces(
             @ToolParam(required = false, description = "nextCursor of the previous call")
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
@@ -197,7 +197,7 @@ public class ConfluencePageTools {
             + "list (code, noformat, info, note, warning, tip, panel, expand, excerpt) are not expanded and are "
             + "listed in omittedMacros. The body is cut at 50000 characters (body.truncated).")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Pobierz stronę")
+    @ToolTitle("Get page")
     public PageResult getPage(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -212,7 +212,7 @@ public class ConfluencePageTools {
     @Tool(name = "get_page_by_title", description = "Returns the current page with exactly this title in one "
             + "Confluence space, in the same form as get_page.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Pobierz stronę po tytule")
+    @ToolTitle("Get page by title")
     public PageResult getPageByTitle(
             @ToolParam(description = "Key of the space, letters and digits only")
             @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
@@ -230,7 +230,7 @@ public class ConfluencePageTools {
 
     @Tool(name = "get_space", description = "Returns one Confluence space: its key and name.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Pobierz przestrzeń")
+    @ToolTitle("Get space")
     public SpaceResult getSpace(
             @ToolParam(description = "Key of the space, letters and digits only")
             @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
@@ -242,7 +242,7 @@ public class ConfluencePageTools {
             + "form of get_page (the version field is the requested one). A version that does not exist is "
             + "not_found_or_denied.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Pobierz wersję strony")
+    @ToolTitle("Get page version")
     public PageResult getPageVersion(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -257,7 +257,7 @@ public class ConfluencePageTools {
             + "per call: id, id of the parent comment, author, creation time, location (footer or inline) and the "
             + "text of each, and nextCursor when more follow. Macros in comments are not expanded.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista komentarzy")
+    @ToolTitle("List comments")
     public PagedResult<CommentItem> listComments(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -277,7 +277,7 @@ public class ConfluencePageTools {
     @Tool(name = "list_labels", description = "Lists the labels of a Confluence page (global labels only), at most 200; "
             + "truncated is true when the page has more.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista etykiet strony")
+    @ToolTitle("List labels")
     public LabelsResult listLabels(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -290,7 +290,7 @@ public class ConfluencePageTools {
             + "id, file name, media type, size in bytes and version, and nextCursor when more follow. File contents "
             + "are not part of the list.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Lista załączników")
+    @ToolTitle("List attachments")
     public PagedResult<AttachmentItem> listAttachments(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -309,7 +309,7 @@ public class ConfluencePageTools {
             + "200000 bytes) of a Confluence page, cut at 50000 characters (content.truncated). Other files are not "
             + "returned: omitted holds binary_attachment or attachment_too_large and content is empty.")
     @ToolRisk(RiskLevel.READ_ONLY)
-    @ToolTitle("Odczytaj załącznik tekstowy")
+    @ToolTitle("Read attachment")
     public AttachmentContent readAttachment(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -334,7 +334,7 @@ public class ConfluencePageTools {
             + "and markup characters are escaped, so macros and HTML are not supported. Returns id, space key, "
             + "title and version of the new page. A repeated call fails because the title already exists.")
     @ToolRisk(RiskLevel.UPDATE)
-    @ToolTitle("Utwórz stronę")
+    @ToolTitle("Create page")
     public WrittenPage createPage(
             @ToolParam(description = "Key of the space, letters and digits only")
             @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
@@ -366,7 +366,7 @@ public class ConfluencePageTools {
             + "another version by now the call fails and changes nothing. Returns id, space key, title and the new "
             + "version.")
     @ToolRisk(RiskLevel.UPDATE)
-    @ToolTitle("Zmień stronę")
+    @ToolTitle("Update page")
     public WrittenPage updatePage(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -393,7 +393,7 @@ public class ConfluencePageTools {
     @Tool(name = "add_comment", description = "Adds a footer comment to a Confluence page, or a reply to one of its "
             + "comments. The text is plain text, escaped. A repeated call adds the comment again.")
     @ToolRisk(RiskLevel.UPDATE)
-    @ToolTitle("Dodaj komentarz")
+    @ToolTitle("Add comment")
     public AddedComment addComment(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -414,7 +414,7 @@ public class ConfluencePageTools {
     @Tool(name = "add_label", description = "Adds a global label to a Confluence page. A label the page already has "
             + "is left as it is, so a repeated call changes nothing.")
     @ToolRisk(RiskLevel.UPDATE)
-    @ToolTitle("Dodaj etykietę")
+    @ToolTitle("Add label")
     public AddedLabel addLabel(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
@@ -431,7 +431,7 @@ public class ConfluencePageTools {
     @Tool(name = "delete_page", description = "Moves a Confluence page to the trash of its space. Child pages are "
             + "not deleted. A space administrator can restore the page from the trash.")
     @ToolRisk(RiskLevel.DESTRUCTIVE)
-    @ToolTitle("Usuń stronę")
+    @ToolTitle("Delete page")
     public TrashedPage deletePage(
             @ToolParam(description = "Page id, a positive decimal number")
             @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")

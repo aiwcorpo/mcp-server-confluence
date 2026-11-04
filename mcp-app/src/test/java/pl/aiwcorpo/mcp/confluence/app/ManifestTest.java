@@ -49,15 +49,15 @@ class ManifestTest extends ServerTestSupport {
             Map.entry("add_label", "pageId:Confluence::Page"), Map.entry("delete_page", "pageId:Confluence::Page"));
 
     static final Map<String, String> TITLES = Map.ofEntries(
-            Map.entry("search_pages", "Szukaj stron"), Map.entry("list_pages", "Lista stron przestrzeni"),
-            Map.entry("list_child_pages", "Lista stron podrzędnych"), Map.entry("list_spaces", "Lista przestrzeni"),
-            Map.entry("get_page", "Pobierz stronę"), Map.entry("get_page_by_title", "Pobierz stronę po tytule"),
-            Map.entry("get_space", "Pobierz przestrzeń"), Map.entry("get_page_version", "Pobierz wersję strony"),
-            Map.entry("list_comments", "Lista komentarzy"), Map.entry("list_labels", "Lista etykiet strony"),
-            Map.entry("list_attachments", "Lista załączników"), Map.entry("read_attachment", "Odczytaj załącznik tekstowy"),
-            Map.entry("create_page", "Utwórz stronę"), Map.entry("update_page", "Zmień stronę"),
-            Map.entry("add_comment", "Dodaj komentarz"), Map.entry("add_label", "Dodaj etykietę"),
-            Map.entry("delete_page", "Usuń stronę"));
+            Map.entry("search_pages", "Search pages"), Map.entry("list_pages", "List pages"),
+            Map.entry("list_child_pages", "List child pages"), Map.entry("list_spaces", "List spaces"),
+            Map.entry("get_page", "Get page"), Map.entry("get_page_by_title", "Get page by title"),
+            Map.entry("get_space", "Get space"), Map.entry("get_page_version", "Get page version"),
+            Map.entry("list_comments", "List comments"), Map.entry("list_labels", "List labels"),
+            Map.entry("list_attachments", "List attachments"), Map.entry("read_attachment", "Read attachment"),
+            Map.entry("create_page", "Create page"), Map.entry("update_page", "Update page"),
+            Map.entry("add_comment", "Add comment"), Map.entry("add_label", "Add label"),
+            Map.entry("delete_page", "Delete page"));
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build();
 
     private HttpResponse<String> get(String path, Map<String, String> headers) throws Exception {

@@ -14,8 +14,10 @@ import org.springframework.util.unit.DataSize;
  * @param maxResponseSize larger bodies are cut off with an error instead of filling the heap
  * @param allowPlainHttp  {@code http} outside the dev profile, for the mocks of mcp-platform-dev only
  *                        ({@code MCP_CONFLUENCE_ALLOW_PLAIN_HTTP}); the credential then crosses the network in clear text
- * @param allowWritesOnUnknownVersion writes also when the capability probe found no tested version (a Confluence that
- *                        hides its version, or one newer than 10.x); the operator takes the responsibility
+ * @param allowWritesOnUnknownVersion opens writes only when the capability probe ended in {@code unavailable} (no
+ *                        version number could be read) and has answered at least once; before the first answer writes
+ *                        stay closed. A version the probe read but did not test (older than 8.5, 11.x) stays read
+ *                        only whatever the flag says; the operator takes the responsibility for the opened case
  *                        ({@code MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION})
  */
 @ConfigurationProperties("confluence.backend")
