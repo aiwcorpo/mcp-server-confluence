@@ -12,7 +12,7 @@ import org.springframework.util.unit.DataSize;
  * @param connectTimeout  time to open the connection
  * @param readTimeout     time for the whole response; the gateway gives up on the call soon after anyway
  * @param maxResponseSize larger bodies are cut off with an error instead of filling the heap
- * @param allowPlainHttp  {@code http} outside the dev profile, for the mocks of mcp-platform-dev only
+ * @param allowPlainHttp  {@code http} outside the dev profile, for the mocks of the dev stack only
  *                        ({@code MCP_CONFLUENCE_ALLOW_PLAIN_HTTP}); the credential then crosses the network in clear text
  * @param allowWritesOnUnknownVersion opens writes only when the capability probe ended in {@code unavailable} (no
  *                        version number could be read) and has answered at least once; before the first answer writes

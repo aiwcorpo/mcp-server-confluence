@@ -56,7 +56,7 @@ confluence:
     connect-timeout: 2s
     read-timeout: 10s
     max-response-size: 1MB
-    # Plain http outside 'dev' only for the mocks of mcp-platform-dev; never in a real deployment.
+    # Plain http outside 'dev' only for the mocks of the dev stack; never in a real deployment.
     allow-plain-http: ${MCP_CONFLUENCE_ALLOW_PLAIN_HTTP:false}
     # Writes only on a release the version probe knows (8.5 up to 10.x). true also allows them when Confluence hides its
     # version or runs a newer one; the operator then answers for the behaviour of the REST API there.
