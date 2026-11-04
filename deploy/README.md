@@ -1,6 +1,6 @@
 # deploy/
 
-Uruchomienie serwera na VM przez systemd. Opis krok po kroku: `docs/operations/deployment-vm-systemd.md`.
+Uruchomienie serwera na VM przez systemd. Opis krok po kroku: `docs/operator/install-vm.md` in `mcp-docs`.
 Obraz kontenera: `Dockerfile` w katalogu głównym.
 
 ```
