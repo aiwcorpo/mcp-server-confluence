@@ -8,7 +8,7 @@ JWT it answers 401; there is no anonymous mode.
 The server does not log users in, decide who may call which tool, or ask for confirmation of destructive actions. The
 gateway does that. The server provides the tools, the Confluence adapter, error mapping and the audit trail the starter writes.
 
-Built on `mcp-platform-starter` 3.0.0-beta-14 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, `mcp-contracts` 6.3.2).
+Built on `mcp-platform-starter` 3.0.0 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, `mcp-contracts` 6.3.2).
 
 ## Supported Confluence versions
 

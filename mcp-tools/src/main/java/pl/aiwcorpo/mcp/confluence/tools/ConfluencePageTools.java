@@ -479,7 +479,7 @@ public class ConfluencePageTools {
     /**
      * One page of a list whose elements the policy may hide. A short page with a cursor, or a run of empty ones, would tell
      * the caller that something in the window was hidden, so further windows are read until the page is full or the list
-     * ends (README of the starter, "Duże wyniki"). The elements are judged here with the resolver of their type; the
+     * ends (README of the starter, "Large results: pages, cursor, `truncated` and `omitted`"). The elements are judged here with the resolver of their type; the
      * starter's result filter then finds the same answers cached.
      */
     private <S, R> PagedResult<R> filledPage(@Nullable String position, String tool, String fingerprint,
