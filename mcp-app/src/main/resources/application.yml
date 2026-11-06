@@ -31,14 +31,11 @@ aiwcorpo:
         jwks-uri: ${MCP_GATEWAY_JWKS_URI:}
       credential:
         connect-url: ${MCP_CONNECT_URL:}
-      # The signed policy bundle (C7), the same one the gateway evaluates. The server does not start without a first
-      # bundle, and state-dir keeps the last accepted revision across restarts so an older signed bundle is refused.
-      policy:
-        main:
-          url: ${MCP_POLICY_URL:}
-          key-id: ${MCP_POLICY_KEY_ID:}
-          public-key-file: ${MCP_POLICY_PUBLIC_KEY_FILE:}
-        state-dir: ${MCP_POLICY_STATE_DIR:}
+      # Scope mapping, allowed AI clients and emergency overrides of the administrator, served by the gateway over mTLS with
+      # this server's own certificate (CN mcp-confluence). The policies themselves are in this jar (mcp/policies/).
+      policy-data:
+        url: ${MCP_GATEWAY_POLICY_DATA_URL:}
+        tls-name: ${MCP_GATEWAY_TLS_NAME:}
       # HMAC key of list cursors (Base64, at least 32 bytes). Every instance needs the same one; without it each process
       # draws its own, so a cursor does not survive a restart or a move to another instance.
       paging:

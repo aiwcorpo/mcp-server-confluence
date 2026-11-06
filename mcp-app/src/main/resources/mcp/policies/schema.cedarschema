@@ -1,0 +1,26 @@
+// Fragment of mcp-confluence: one namespace, the server's own. Base types (User, ResourceScope, RequestContext) are
+// referenced unqualified from the empty namespace of cedar/mcp.cedarschema. Every entity type has `scopes`.
+
+namespace Confluence {
+  // Classification: the labels of the space, required. The server refuses a space whose list is incomplete, and the
+  // entity builder normalizes the labels (trim, ASCII lower case); the canonical value for restricted data is "restricted".
+  entity Space {
+    key: String,
+    labels: Set<String>,
+    scopes: Set<ResourceScope>,
+  };
+  // `space` duplicates the parent edge because Cedar cannot read attributes of an ancestor through `in`. ancestorIds are the
+  // ids of the ancestor pages as Confluence reports them; the resolver turns them into the page tree scopes of `scopes`.
+  entity Page in [Space] {
+    id: String,
+    space: Space,
+    ancestorIds?: Set<String>,
+    scopes: Set<ResourceScope>,
+  };
+
+  action "read", "update", "delete", "admin" appliesTo {
+    principal: [User],
+    resource: [Space, Page],
+    context: RequestContext,
+  };
+}

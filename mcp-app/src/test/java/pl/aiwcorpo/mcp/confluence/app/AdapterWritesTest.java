@@ -17,7 +17,7 @@ import pl.aiwcorpo.mcp.confluence.core.port.out.ConfluenceResourcePort;
 import pl.aiwcorpo.mcp.platform.security.CredentialHeaderFilter;
 
 /**
- * The adapter's delete, which the sample policy bundle never lets a tool call reach: driven directly, with the
+ * The adapter's delete, which the policies of this server never let a tool call reach: driven directly, with the
  * credential bound by the starter's own filter, against the stub.
  */
 class AdapterWritesTest extends ServerTestSupport {

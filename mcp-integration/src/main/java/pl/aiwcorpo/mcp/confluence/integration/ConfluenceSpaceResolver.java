@@ -39,4 +39,9 @@ public class ConfluenceSpaceResolver implements ResourceResolver<Space> {
     public ResolvedResource describe(Space space) {
         return ConfluenceResourceDescription.of(space);
     }
+
+    @Override
+    public Optional<ResolvedResource> probe(String spaceKey) {
+        return ConfluenceResourceDescription.probeOfSpace(spaceKey);
+    }
 }

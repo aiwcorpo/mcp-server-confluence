@@ -196,12 +196,25 @@ class ResourcePolicyTest extends ServerTestSupport {
     }
 
     @Test
+    void aWriteInASpaceWithoutAGrantIsRefusedByTheScopeCheckBeforeAnythingIsLookedUp() {
+        try (McpSyncClient client = writerWithCredential(PAT)) {
+            McpSchema.CallToolResult ungranted = call(client, "create_page",
+                    Map.of("space", "OPS", "parentId", "1000", "title", "T", "body", "x"));
+            McpSchema.CallToolResult ungrantedMissingParent = call(client, "create_page",
+                    Map.of("space", "OPS", "parentId", "1404", "title", "T", "body", "x"));
+
+            assertThat(text(ungranted)).contains("\"error\":\"access_denied\"").isEqualTo(text(ungrantedMissingParent));
+        }
+        assertThat(BACKEND.requests()).isEmpty();
+    }
+
+    @Test
     void aParentOfAnotherSpaceThanTheNamedOneIsNotFoundAndNothingIsCreated() {
         try (McpSyncClient client = writerWithCredential(PAT)) {
             McpSchema.CallToolResult mismatch = call(client, "create_page",
-                    Map.of("space", "OPS", "parentId", "1000", "title", "T", "body", "x"));
+                    Map.of("space", "ENG", "parentId", "4002", "title", "T", "body", "x"));
             McpSchema.CallToolResult missing = call(client, "create_page",
-                    Map.of("space", "OPS", "parentId", "1404", "title", "T", "body", "x"));
+                    Map.of("space", "ENG", "parentId", "1404", "title", "T", "body", "x"));
 
             assertNotFoundOrDenied(mismatch);
             assertThat(text(mismatch)).isEqualTo(text(missing));
@@ -212,12 +225,13 @@ class ResourcePolicyTest extends ServerTestSupport {
     @Test
     void aParentInARestrictedSpaceIsNotFoundOrDeniedEvenForAWriterOfThatSpace() {
         try (McpSyncClient client = clientWithToken(user -> user.username("jkowalski")
-                .groups(List.of(READ_GROUP, WRITE_GROUP, ENG_SPACE_GROUP)), PAT)) {
+                .groups(List.of(READ_GROUP, WRITE_GROUP, HR_SPACE_GROUP)), PAT)) {
             McpSchema.CallToolResult restricted = call(client, "create_page",
                     Map.of("space", "HR", "parentId", "2000", "title", "T", "body", "x"));
             McpSchema.CallToolResult missing = call(client, "create_page",
                     Map.of("space", "HR", "parentId", "1404", "title", "T", "body", "x"));
 
+            assertNotFoundOrDenied(restricted);
             assertThat(text(restricted)).isEqualTo(text(missing));
         }
         assertThat(BACKEND.requests()).noneMatch(request -> "POST".equals(request.method()));

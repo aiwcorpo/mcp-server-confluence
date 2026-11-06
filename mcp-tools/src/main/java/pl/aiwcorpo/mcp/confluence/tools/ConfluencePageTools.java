@@ -103,7 +103,7 @@ public class ConfluencePageTools {
     @ToolTitle("Search pages")
     public PagedResult<PageHit> searchPages(
             @ToolParam(description = "Key of the space to search, letters and digits only")
-            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, resourceType = ConfluenceResourceModel.SPACE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
             @ToolParam(required = false, description = "Words to look for in page titles and content, at most 200 characters")
             @ArgumentLimits(minLength = 1, maxLength = SEARCH_TEXT_MAX, pattern = NON_BLANK_LINE) @Nullable String text,
@@ -143,7 +143,7 @@ public class ConfluencePageTools {
     @ToolTitle("List pages")
     public PagedResult<PageHit> listPages(
             @ToolParam(description = "Key of the space, letters and digits only")
-            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, resourceType = ConfluenceResourceModel.SPACE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
             @ToolParam(required = false, description = "nextCursor of the previous call with the same arguments")
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
@@ -160,7 +160,7 @@ public class ConfluencePageTools {
     @ToolTitle("List child pages")
     public PagedResult<PageHit> listChildPages(
             @ToolParam(description = "Id of the parent page, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(required = false, description = "nextCursor of the previous call with the same arguments")
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
@@ -200,7 +200,7 @@ public class ConfluencePageTools {
     @ToolTitle("Get page")
     public PageResult getPage(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId) {
         return PageResult.of(useCase.getPage(judgedPage(pageId)));
     }
@@ -215,7 +215,7 @@ public class ConfluencePageTools {
     @ToolTitle("Get page by title")
     public PageResult getPageByTitle(
             @ToolParam(description = "Key of the space, letters and digits only")
-            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, resourceType = ConfluenceResourceModel.SPACE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
             @ToolParam(description = "Exact page title, one line, at most 255 characters")
             @ArgumentLimits(minLength = 1, maxLength = TITLE_MAX, pattern = NON_BLANK_LINE) String title) {
@@ -233,7 +233,7 @@ public class ConfluencePageTools {
     @ToolTitle("Get space")
     public SpaceResult getSpace(
             @ToolParam(description = "Key of the space, letters and digits only")
-            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, resourceType = ConfluenceResourceModel.SPACE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space) {
         return SpaceResult.of(judgedSpace(space));
     }
@@ -245,7 +245,7 @@ public class ConfluencePageTools {
     @ToolTitle("Get page version")
     public PageResult getPageVersion(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(description = "Version number, 1 or more")
             @ArgumentLimits(minimum = 1, maximum = 1_000_000) int version) {
@@ -260,7 +260,7 @@ public class ConfluencePageTools {
     @ToolTitle("List comments")
     public PagedResult<CommentItem> listComments(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(required = false, description = "nextCursor of the previous call with the same arguments")
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
@@ -280,7 +280,7 @@ public class ConfluencePageTools {
     @ToolTitle("List labels")
     public LabelsResult listLabels(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId) {
         Slice<String> labels = useCase.listLabels(judgedPage(pageId));
         return LabelsResult.of(labels.items(), labels.nextStart() != null);
@@ -293,7 +293,7 @@ public class ConfluencePageTools {
     @ToolTitle("List attachments")
     public PagedResult<AttachmentItem> listAttachments(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(required = false, description = "nextCursor of the previous call with the same arguments")
             @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
@@ -312,7 +312,7 @@ public class ConfluencePageTools {
     @ToolTitle("Read attachment")
     public AttachmentContent readAttachment(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(description = "Attachment id from list_attachments, att followed by digits")
             @ArgumentLimits(minLength = 4, maxLength = 21, pattern = ATTACHMENT_ID) String attachmentId) {
@@ -337,10 +337,10 @@ public class ConfluencePageTools {
     @ToolTitle("Create page")
     public WrittenPage createPage(
             @ToolParam(description = "Key of the space, letters and digits only")
-            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, contractPattern = "ConfluenceSpaceKey")
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, resourceType = ConfluenceResourceModel.SPACE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
             @ToolParam(description = "Id of the parent page in that space, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String parentId,
             @ToolParam(description = "Page title, one line, at most 255 characters")
             @ArgumentLimits(minLength = 1, maxLength = TITLE_MAX, pattern = NON_BLANK_LINE) String title,
@@ -369,7 +369,7 @@ public class ConfluencePageTools {
     @ToolTitle("Update page")
     public WrittenPage updatePage(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(description = "Version number of the page as last read (version field of get_page)")
             @ArgumentLimits(minimum = 1, maximum = 1_000_000) int expectedVersion,
@@ -396,12 +396,12 @@ public class ConfluencePageTools {
     @ToolTitle("Add comment")
     public AddedComment addComment(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(description = "Comment text, at most 10000 characters")
             @ArgumentLimits(minLength = 1, maxLength = COMMENT_MAX, pattern = Arguments.MULTI_LINE) String body,
             @ToolParam(required = false, description = "Id of a comment of the same page to reply to")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId") @Nullable String parentCommentId) {
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, pattern = ConfluenceIds.PAGE_ID) @Nullable String parentCommentId) {
         String text = Arguments.require("body", body, 1, COMMENT_MAX, Arguments.MULTI_LINE,
                 "1-10000 characters without control characters other than tab and line breaks");
         if (parentCommentId != null && !ConfluenceIds.isPageId(parentCommentId)) {
@@ -417,7 +417,7 @@ public class ConfluencePageTools {
     @ToolTitle("Add label")
     public AddedLabel addLabel(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
             @ToolParam(description = "Label: lower case letters, digits, '_', '.', '-', at most 100 characters")
             @ArgumentLimits(minLength = 1, maxLength = 100, pattern = LABEL) String label) {
@@ -434,7 +434,7 @@ public class ConfluencePageTools {
     @ToolTitle("Delete page")
     public TrashedPage deletePage(
             @ToolParam(description = "Page id, a positive decimal number")
-            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, contractPattern = "ConfluencePageId")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
             @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId) {
         PageRecord page = judgedPage(pageId);
         useCase.trashPage(page);

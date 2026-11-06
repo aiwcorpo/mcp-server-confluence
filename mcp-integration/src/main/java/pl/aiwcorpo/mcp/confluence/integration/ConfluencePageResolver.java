@@ -1,6 +1,7 @@
 package pl.aiwcorpo.mcp.confluence.integration;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
@@ -45,5 +46,16 @@ public class ConfluencePageResolver implements ResourceResolver<PageRecord> {
     @Override
     public ResolvedResource describe(PageRecord page) {
         return ConfluenceResourceDescription.of(page);
+    }
+
+    /** A page lies in a space or a page tree the caller may hold a grant on; the id alone does not say which. */
+    @Override
+    public List<String> scopeTypes() {
+        return List.of(ConfluenceResourceModel.SPACE_TYPE, ConfluenceResourceModel.PAGE_TYPE);
+    }
+
+    @Override
+    public Optional<ResolvedResource> probeOutsideScopes(String pageId) {
+        return ConfluenceResourceDescription.pageOutsideScopes(pageId);
     }
 }

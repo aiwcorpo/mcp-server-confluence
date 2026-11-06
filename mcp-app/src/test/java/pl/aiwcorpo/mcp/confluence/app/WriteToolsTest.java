@@ -209,7 +209,7 @@ class WriteToolsTest extends ServerTestSupport {
     }
 
     @Test
-    void deletingIsDestructiveAndTheSampleBundleGrantsNoOneTheCall() {
+    void deletingIsDestructiveAndAWriterWithoutTheDestructiveGroupIsRefused() {
         try (McpSyncClient client = writerWithCredential(PAT)) {
             McpSchema.Tool tool = client.listTools().tools().stream()
                     .filter(t -> t.name().equals("delete_page")).findFirst().orElseThrow();

@@ -1,0 +1,18 @@
+[
+  {
+    "type": "Confluence::Space",
+    "attributes": ["key", "labels"],
+    "idPattern": "^[A-Za-z0-9]{1,255}$",
+    "scopePattern": "^[A-Za-z0-9]{1,255}$",
+    "earlyScopeCheck": true,
+    "classification": {"attribute": "labels", "kind": "set", "required": true}
+  },
+  {
+    "type": "Confluence::Page",
+    "attributes": ["id", "ancestorIds"],
+    "parent": "Confluence::Space",
+    "parentAttribute": "space",
+    "idPattern": "^[1-9][0-9]{0,18}$",
+    "scopePattern": "^[1-9][0-9]{0,18}$"
+  }
+]

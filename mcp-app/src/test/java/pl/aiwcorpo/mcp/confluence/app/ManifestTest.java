@@ -147,6 +147,22 @@ class ManifestTest extends ServerTestSupport {
     }
 
     @Test
+    void theManifestCarriesThePoliciesAndTheDeclarationsOfTheJarWithTheirHash() throws Exception {
+        JsonNode manifest = manifest();
+
+        assertThat(manifest.at("/policies/namespace").asString()).isEqualTo("Confluence");
+        assertThat(manifest.at("/policies/files").findValuesAsString("name")).containsExactly("read.cedar", "update.cedar");
+        assertThat(manifest.get("policiesHash").asString()).startsWith("sha256:");
+        List<String> declared = new ArrayList<>();
+        manifest.get("resourceTypes").forEach(type -> declared.add(type.get("type").asString()));
+        assertThat(declared).containsExactlyInAnyOrder("Confluence::Space", "Confluence::Page");
+        JsonNode page = manifest.get("resourceTypes").valueStream()
+                .filter(type -> "Confluence::Page".equals(type.get("type").asString())).findFirst().orElseThrow();
+        assertThat(page.get("parent").asString()).isEqualTo("Confluence::Space");
+        assertThat(page.get("parentAttribute").asString()).isEqualTo("space");
+    }
+
+    @Test
     void theDefinitionsAreExactlyWhatToolsListPublishesSoTheHashesAgree() throws Exception {
         JsonNode manifest = manifest();
         List<JsonNode> listed = listedTools();

@@ -3,9 +3,10 @@ package pl.aiwcorpo.mcp.confluence.core.domain;
 import java.util.regex.Pattern;
 
 /**
- * Identifier grammars of mcp-contracts ({@code ConfluenceSpaceKey}, {@code ConfluencePageId} in
- * common.schema.json). The same strings go into the tools' input schemas, so they are ECMA-262 and Java
- * compatible.
+ * Identifier grammars of the two resource types: the {@code idPattern} of each in
+ * {@code mcp/policies/resource-types.json}, which the starter puts into the tools' input schemas, so they are ECMA-262
+ * and Java compatible. They are repeated here for the places that check an id outside a {@code @ResourceRef}
+ * argument; a test keeps them equal to the declarations.
  */
 public final class ConfluenceIds {
 

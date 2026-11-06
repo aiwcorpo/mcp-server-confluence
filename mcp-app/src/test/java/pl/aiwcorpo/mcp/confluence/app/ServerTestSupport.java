@@ -10,11 +10,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.time.Duration;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -40,13 +39,22 @@ abstract class ServerTestSupport {
     static final String PAT = "Bearer confluence-pat-of-jkowalski-7f3a";
     static final String READ_GROUP = "mcp-confluence-read";
     static final String WRITE_GROUP = "mcp-confluence-write";
-    /** Maps to the scope {@code Confluence::Space/ENG} in the sample bundle of the contracts. */
+    /** Mapped to the scope {@code Confluence::Space/ENG} in the policy data of {@link #GATEWAY}. */
     static final String ENG_SPACE_GROUP = "mcp-confluence-space-ENG";
-    /** Maps to the page tree {@code Confluence::Page/1000} in the sample bundle of the contracts. */
+    /** Mapped to the page tree {@code Confluence::Page/1000} in the policy data of {@link #GATEWAY}. */
     static final String HANDBOOK_EDITORS_GROUP = "mcp-confluence-handbook-editors";
-    static final Set<String> CONTRACT_SYSTEMS = contractSystems();
+    /** Mapped to the scope {@code Confluence::Space/HR}, a space labelled restricted: a grant never opens it. */
+    static final String HR_SPACE_GROUP = "mcp-confluence-space-HR";
 
     static final TestGateway GATEWAY = TestGateway.start(SERVER_ID);
+
+    static {
+        GATEWAY.policyData().scopeMapping(Map.of(
+                "mcp-confluence-space-ENG", List.of("Confluence::Space/ENG"),
+                "mcp-confluence-handbook-editors", List.of("Confluence::Page/1000"),
+                "mcp-confluence-space-HR", List.of("Confluence::Space/HR")));
+    }
+
     static final StubBackend BACKEND = StubBackend.start();
 
     @DynamicPropertySource
@@ -136,20 +144,18 @@ abstract class ServerTestSupport {
         return client;
     }
 
-    /**
-     * The starter sends only C10 errors valid against {@code tool-error.schema.json}, whose {@code system} is the
-     * closed {@code SystemId} list of the contracts. For a system outside it (the template's placeholder, a
-     * trial name) a {@code credential_required} becomes {@code internal_error}; for the platform's systems the
-     * full error with the portal link is expected.
-     */
+    /** A C10 {@code credential_required} with the portal link of the system, as the user is meant to see it. */
     static void assertCredentialRequired(McpSchema.CallToolResult result) {
         assertThat(result.isError()).isTrue();
-        if (CONTRACT_SYSTEMS.contains(SYSTEM)) {
-            assertThat(text(result)).contains("\"error\":\"credential_required\"", "\"system\":\"" + SYSTEM + "\"",
-                    "\"connectUrl\":\"http://localhost:18090/connections?system=" + SYSTEM + "\"");
-        } else {
-            assertThat(text(result)).contains("\"error\":\"internal_error\"");
-        }
+        assertThat(text(result)).contains("\"error\":\"credential_required\"", "\"system\":\"" + SYSTEM + "\"",
+                "\"connectUrl\":\"http://localhost:18090/connections?system=" + SYSTEM + "\"");
+    }
+
+    /** The system id must be one the contracts accept: {@code mcp-<system>} is the server id and the CN of its certificate. */
+    @Test
+    void systemIsAnIdOfTheContracts() {
+        assertThat(SYSTEM).matches(systemIdPattern());
+        assertThat(SERVER_ID).isEqualTo("mcp-" + SYSTEM);
     }
 
     /**
@@ -167,13 +173,10 @@ abstract class ServerTestSupport {
         assertThat(text(result)).contains("\"error\":\"not_found_or_denied\"");
     }
 
-    private static Set<String> contractSystems() {
+    private static String systemIdPattern() {
         try (InputStream schema = ServerTestSupport.class.getClassLoader()
                 .getResourceAsStream("mcp-contracts/schemas/common.schema.json")) {
-            Set<String> systems = new HashSet<>();
-            JsonMapper.builder().build().readTree(schema).at("/$defs/SystemId/enum")
-                    .forEach(system -> systems.add(system.asString()));
-            return Set.copyOf(systems);
+            return JsonMapper.builder().build().readTree(schema).at("/$defs/SystemId/pattern").asString();
         } catch (IOException ex) {
             throw new UncheckedIOException(ex);
         }
