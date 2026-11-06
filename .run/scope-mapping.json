@@ -1,0 +1,4 @@
+[
+  {"group": "mcp-confluence-space-ENG", "scopes": ["Confluence::Space/ENG"]},
+  {"group": "mcp-confluence-handbook-editors", "scopes": ["Confluence::Page/1000"]}
+]
