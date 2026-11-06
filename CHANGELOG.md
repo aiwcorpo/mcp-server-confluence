@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.0.0
+
+Major release: the policies of the server live in this repository. Built on `mcp-platform-starter` 4.0.0 and `mcp-contracts` 7.0.0.
+
+- Cedar policies in `mcp-app/src/main/resources/mcp/policies/` (schema in the namespace `Confluence`, `resource-types.json`,
+  `read.cedar`, `update.cedar`), carried in the manifest with `policiesHash`. They replace `policies/confluence/` of the `mcp-policies`
+  repository; the rules are the same, except what the platform now generates for every server: the call rules by group, the forbid
+  for spaces labelled `restricted` (from `Confluence::Space.labels`, for the space and for its pages) and the rule for the service
+  account.
+- A deployed server whose policies or declarations changed waits for approval in the gateway: it refuses calls (`policies_not_approved`,
+  `policies_differ`) until an administrator approves the new `policiesHash`. Register the new manifest and approve before the first call.
+- The resolvers derive the scopes that the entity builder used to derive: a space carries `Confluence::Space/<key>`, a page carries
+  the scope of its space, `Confluence::Page/<id>` of every ancestor page Confluence reports and its own, so a page tree grant is
+  decided with `principal in resource.scopes`. The space provides the grant probe (`probe(id)`) and the page `scopeTypes()` with
+  `probeOutsideScopes(id)`, so a caller without a grant is refused before Confluence is asked. Id arguments take their pattern from the
+  declared types (`@ArgumentLimits(resourceType = ...)`).
+- Behaviour change: `Confluence::Space` is declared `earlyScopeCheck`, so `create_page` in a space the caller holds no grant on is
+  refused by the scope check as `access_denied` before any lookup; it used to be `not_found_or_denied` from the server. What a caller may
+  do is the same: creating a page always needed a grant on the space, never only on a page tree.
+- Removed: `MCP_POLICY_URL`, `MCP_POLICY_KEY_ID`, `MCP_POLICY_PUBLIC_KEY_FILE`, `MCP_POLICY_STATE_DIR`, the signed policy bundle and the
+  `StateDirectory` of the unit. Added: `MCP_GATEWAY_POLICY_DATA_URL` (and `MCP_GATEWAY_TLS_NAME` when the host in it is not a name of the
+  gateway certificate). The server connects to the gateway for the policy data with its own certificate, which now needs the usage
+  `clientAuth` next to `serverAuth` (CN `mcp-confluence`, SAN `mcp-confluence.internal`).
+- `deploy/` has `compose.yaml`, `mcp-confluence.env` and `certs/` next to the systemd files, and the procedure that adds the system
+  `confluence` in the broker and the server `mcp-confluence` in the gateway without restarting anything.
+- `.run/` has IntelliJ configurations for the server and for the `LocalGateway` of `mcp-platform-test`, with the policies directory and a scope mapping.
+
 ## 1.0.0
 
 First public release. MCP server for Confluence Data Center 8.5 to 10.x, run behind the platform gateway. Built on
