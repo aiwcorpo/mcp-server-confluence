@@ -1,7 +1,7 @@
 # Install mcp-confluence
 
 The Confluence Data Center server as one container (Docker Compose) or one systemd service. It runs behind the MCP gateway; the
-gateway, the credential broker, the identity provider and Redis are installed elsewhere. Step by step for a VM:
+gateway, the credential broker and the identity provider are installed elsewhere. Step by step for a VM:
 `docs/operator/install-vm.md` in `mcp-docs`. The image is built from the `Dockerfile` in the repository root.
 
 ```
@@ -27,7 +27,7 @@ deploy/
   Also the CA certificate.
 - The addresses of the gateway (internal TLS port), of Confluence Data Center (`https`, with the context path if it has one) and of
   the portal page for connecting an account.
-- Redis with an ACL user `mcp-confluence` that may run `SET` on `jti:mcp-confluence:*`.
+- Redis: `compose.yaml` starts one next to the server (service `redis`, reachable from the server only, default user off, one ACL account that may run `SET` on its own `jti:` keys). `MCP_REDIS_PASSWORD` in the env file is its password: choose one (`openssl rand -hex 24`). For one Redis shared by several instances, remove the service and set `MCP_REDIS_HOST` in the compose file.
 
 ## Install
 
