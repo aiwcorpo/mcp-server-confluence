@@ -42,7 +42,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           test "$(./mvnw -q -B -N org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=project.version -DforceStdout)" = "$version"
       - name: Verify (tests, manifest)
-        run: ci/run.sh verify
+        run: ./mvnw -B verify
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: build

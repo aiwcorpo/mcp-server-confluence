@@ -46,14 +46,11 @@ JDK 25 is required (`JAVA_HOME` must point to it; an older `java` in `PATH` fail
 ```bash
 export JAVA_HOME=/path/to/jdk-25
 ./mvnw verify      # build and tests, jar in mcp-app/target/mcp-confluence.jar
-make ci            # ci/run.sh verify: source hygiene, mvnw clean verify, check that every test module ran
 ```
 
 The tests need neither Docker nor a Confluence. `TestGateway` from `mcp-platform-test` publishes a JWKS made from the contract
-test keys and signs internal JWTs, and `StubBackend` answers like Confluence DC on the endpoints the server uses. `make ci`
-also leaves the manifest in `mcp-app/target/mcp-manifest.json`; register it in the gateway and approve new `UPDATE` and
-`DESTRUCTIVE` tools there. `ci/run.sh image` builds the container image (`Dockerfile`, `eclipse-temurin:25-jre`, port 8443)
-from `main` only and needs a Docker daemon. A `v*` tag runs `.github/workflows/release.yml`, which builds
+test keys and signs internal JWTs, and `StubBackend` answers like Confluence DC on the endpoints the server uses. `./mvnw verify` also leaves the manifest in `mcp-app/target/mcp-manifest.json`; register it in the gateway and approve new `UPDATE` and
+`DESTRUCTIVE` tools there. `docker build -t mcp-confluence:dev .` builds the container image (`Dockerfile`, `eclipse-temurin:25-jre`, port 8443) from that jar and needs a Docker daemon. The GitHub, GitLab and Jenkins files run `./mvnw -B verify`. A `v*` tag runs `.github/workflows/release.yml`, which builds
 `ghcr.io/aiwcorpo/mcp-server-confluence` and attaches the manifest and an SBOM to the GitHub release.
 
 ## Policies

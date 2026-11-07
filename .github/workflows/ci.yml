@@ -1,7 +1,5 @@
-# Thin wrapper: all logic is in ci/run.sh.
-# A pull request runs unreviewed code: its job has contents: read only, no token or secret in its environment and no Docker
-# socket. The platform artifacts come from Maven Central, so no job needs a credential. The image job builds the image from
-# the jar of the verify job and pushes nothing; release.yml pushes the image of a release. Every action is pinned to a full
+# A pull request runs unreviewed code: its job holds only contents: read, no token in its environment, no secret and no Docker
+# socket. The platform artifacts (mcp-contracts, mcp-platform-starter) come from Maven Central. Every action is pinned to a full
 # commit SHA and the build image to its digest.
 name: ci
 on:
@@ -26,8 +24,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: ci/run.sh verify
+      - run: ./mvnw -B verify
   verify-main:
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
@@ -40,27 +37,11 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: ci/run.sh verify
+      - run: ./mvnw -B verify
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: build
           path: |
             mcp-app/target/mcp-*.jar
             mcp-app/target/mcp-manifest.json
-  image:
-    needs: verify-main
-    if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: build
-          path: mcp-app/target
-      - run: ci/run.sh image
+          if-no-files-found: error

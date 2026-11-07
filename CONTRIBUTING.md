@@ -11,10 +11,10 @@ must already be in `~/.m2`. No container runtime and no Confluence are needed:
 the tests run the whole server against a stub backend.
 
 ```bash
-ci/run.sh verify     # text checks, then clean verify; the same script runs in CI
+./mvnw -B verify     # the same command runs in CI
 ```
 
-`ci/run.sh verify` must pass before a merge. A new tool needs the items of `docs/developer/tools.md` in `mcp-docs`: risk, title,
+`./mvnw -B verify` must pass before a merge. A new tool needs the items of `docs/developer/tools.md` in `mcp-docs`: risk, title,
 `@ResourceRef` for every id it names, a closed argument schema, a negative test, and a row in the README table.
 
 ## Commits
