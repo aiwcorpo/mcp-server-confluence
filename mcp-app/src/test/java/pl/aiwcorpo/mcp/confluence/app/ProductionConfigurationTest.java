@@ -26,27 +26,25 @@ import tools.jackson.databind.json.JsonMapper;
 class ProductionConfigurationTest {
 
     @Test
-    void outsideDevTheServerDemandsAClientCertificate() throws IOException {
+    void theServerAsksForNoClientCertificateAndLeavesTlsToTheStarter() throws IOException {
         List<PropertySource<?>> documents = new YamlPropertySourceLoader()
                 .load("application.yml", new ClassPathResource("application.yml"));
 
-        PropertySource<?> production = documents.stream()
-                .filter(document -> "!dev".equals(document.getProperty("spring.config.activate.on-profile")))
-                .findFirst().orElseThrow();
-        assertThat(String.valueOf(production.getProperty("server.ssl.client-auth"))).isEqualTo("need");
-        assertThat(String.valueOf(production.getProperty("server.ssl.bundle"))).isEqualTo("mcp-server");
+        // The gateway proves itself with the internal JWT, not with a certificate; the certificate of the server comes from
+        // MCP_TLS_*, or the starter generates one (CC-249), so the file sets neither the client auth nor a bundle.
         assertThat(documents).allSatisfy(document -> {
-            Object clientAuth = document.getProperty("server.ssl.client-auth");
-            assertThat(clientAuth == null || "need".equals(String.valueOf(clientAuth))).isTrue();
+            assertThat(document.containsProperty("server.ssl.client-auth")).isFalse();
+            assertThat(document.containsProperty("server.ssl.bundle")).isFalse();
+            assertThat(document.containsProperty("spring.ssl.bundle.jks.mcp-server.keystore.location")).isFalse();
         });
     }
 
     @Test
-    void thePolicyDataComeFromTheGatewayAndNoPolicyBundleSettingRemains() throws IOException {
+    void thePolicyDataIsPushedByTheGatewayAndNoPolicyBundleSettingRemains() throws IOException {
         Map<String, Object> base = (Map<String, Object>) new YamlPropertySourceLoader()
                 .load("application.yml", new ClassPathResource("application.yml")).getFirst().getSource();
 
-        assertThat(String.valueOf(base.get("aiwcorpo.mcp.platform.policy-data.url"))).isEqualTo("${MCP_GATEWAY_POLICY_DATA_URL:}");
+        assertThat(base.containsKey("aiwcorpo.mcp.platform.policy-data.url")).as("pushed by the gateway").isFalse();
         assertThat(base.keySet()).noneMatch(key -> key.startsWith("aiwcorpo.mcp.platform.policy."));
     }
 
