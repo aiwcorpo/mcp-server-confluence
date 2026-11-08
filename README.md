@@ -49,8 +49,7 @@ export JAVA_HOME=/path/to/jdk-25
 ```
 
 The tests need neither Docker nor a Confluence. `TestGateway` from `mcp-platform-test` publishes a JWKS made from the contract
-test keys and signs internal JWTs, and `StubBackend` answers like Confluence DC on the endpoints the server uses. `./mvnw verify` also leaves the manifest in `mcp-app/target/mcp-manifest.json`; register it in the gateway and approve new `UPDATE` and
-`DESTRUCTIVE` tools there. `docker build -t mcp-confluence:dev .` builds the container image (`Dockerfile`, `eclipse-temurin:25-jre`, port 8443) from that jar and needs a Docker daemon. The GitHub, GitLab and Jenkins files run `./mvnw -B verify`. A `v*` tag runs `.github/workflows/release.yml`, which builds
+test keys and signs internal JWTs, and `StubBackend` answers like Confluence DC on the endpoints the server uses. `./mvnw verify` also leaves the manifest in `mcp-app/target/mcp-manifest.json`; it is the document the running server serves at `/.well-known/mcp-manifest` for the gateway to pull, and an administrator approves every new or changed tool there. `docker build -t mcp-confluence:dev .` builds the container image (`Dockerfile`, `eclipse-temurin:25-jre`, port 8443) from that jar and needs a Docker daemon. The GitHub, GitLab and Jenkins files run `./mvnw -B verify`. A `v*` tag runs `.github/workflows/release.yml`, which builds
 `ghcr.io/aiwcorpo/mcp-server-confluence` and attaches the manifest and an SBOM to the GitHub release.
 
 ## Policies
@@ -78,7 +77,7 @@ server decides anything.
 ## Running against a real Confluence
 
 `.run/` has two IntelliJ configurations. Start `LocalGateway` (the gateway of `mcp-platform-test` on `http://127.0.0.1:18500/mcp`,
-serving the JWKS and the policy data on port 18445 with the policies of this working tree and the mapping in
+serving the JWKS on port 18445 and pushing the policy data to the server with the policies of this working tree and the mapping in
 `.run/scope-mapping.json`), then `McpConfluence (dev, behind LocalGateway)` with `MCP_CONFLUENCE_URL` set to your Confluence. Connect an
 MCP client to the gateway with `Authorization: Bearer <your PAT>`. Edit `.run/scope-mapping.json` and the `--groups` of the
 `LocalGateway` configuration for your space keys and page trees, and restart `LocalGateway` after a change to the policies (it
@@ -91,15 +90,15 @@ server does not start without these:
 
 | Variable | Meaning |
 | --- | --- |
-| `MCP_TLS_KEYSTORE`, `MCP_TLS_TRUSTSTORE`, `MCP_TLS_STORE_PASSWORD` | PKCS12 server certificate and the internal CA |
-| `MCP_GATEWAY_JWKS_URI` | JWKS of the gateway's internal JWT, `https` only |
+| `MCP_GATEWAY_JWKS_URI` | public key set of the gateway's internal JWT: `https://<domain of the platform>/.well-known/mcp-jwks.json` |
 | `MCP_CONNECT_URL` | portal page where a user connects an account; returned in `credential_required` |
 | `MCP_CONFLUENCE_URL` | base address of Confluence without `/rest/api`, with the context path if there is one; `https` only |
-| `MCP_GATEWAY_POLICY_DATA_URL` | policy data of the gateway (`/internal/v1/policy-data`), `https` only, fetched with this server's own certificate |
-| `MCP_INTERNAL_URL`, `MCP_ACCEPTED_CREDENTIAL_TYPES` | server address and accepted credential types for the manifest (`user-secret`) |
+| `MCP_ACCEPTED_CREDENTIAL_TYPES` | accepted credential types for the manifest (`user-secret`) |
 
-Also used: `MCP_CONFLUENCE_SSL_BUNDLE` (SSL bundle for a Confluence with an internal CA), `MCP_CURSOR_KEY` (Base64, at least 32
-bytes, the same on every instance), `MCP_REDIS_*` (one-time `jti` store, ACL user `mcp-confluence`) and `MCP_PORT`/`MCP_BIND`
+Also used: `MCP_CONFLUENCE_SSL_BUNDLE` (SSL bundle for a Confluence with an internal CA), `MCP_PAGING_CURSOR_KEY` (Base64, at least 32
+bytes; optional for one instance, required and the same on every instance for several), `MCP_TLS_CERT` and `MCP_TLS_KEY`, or `MCP_TLS_KEYSTORE` with `MCP_TLS_STORE_PASSWORD` (your own certificate; without them the server generates a
+self-signed one into `MCP_STATE_DIR`, and `MCP_PLAIN_HTTP=true` means no TLS inside the platform network), `MCP_REDIS_HOST` and the other `MCP_REDIS_*`
+(one-time `jti` in Redis instead of memory: for several instances behind a balancer, which also need the same `MCP_PAGING_CURSOR_KEY`) and `MCP_PORT`/`MCP_BIND`
 (default `8443`, `0.0.0.0`). `MCP_CONFLUENCE_ALLOW_PLAIN_HTTP=true` allows `http` and exists only for the mocks of the development
 stack. The full list with defaults is in `docs/reference/env-servers.md` of `mcp-docs`.
 
