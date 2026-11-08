@@ -1,7 +1,7 @@
 # systemd unit: /etc/systemd/system/mcp-confluence.service
 #   systemctl daemon-reload && systemctl enable --now mcp-confluence
 [Unit]
-Description=MCP server mcp-confluence (behind the MCP gateway, mTLS)
+Description=MCP server mcp-confluence (behind the MCP gateway)
 After=network-online.target
 Wants=network-online.target
 
@@ -9,7 +9,9 @@ Wants=network-online.target
 Type=simple
 User=mcp
 Group=mcp
-# Secrets and addresses (mcp-confluence.env.template); logs go to journald.
+# Secrets and addresses (mcp-confluence.env.template); logs go to journald (the fingerprint of the certificate is in the first lines).
+# /var/lib/mcp-confluence holds the generated certificate and the cursor key between starts.
+StateDirectory=mcp-confluence
 EnvironmentFile=/etc/mcp-confluence/mcp-confluence.env
 ExecStart=/usr/bin/java -XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -jar /opt/mcp-confluence/mcp-confluence.jar
 
