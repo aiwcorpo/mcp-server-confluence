@@ -8,6 +8,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRestrictions;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
@@ -75,6 +76,9 @@ public interface ConfluenceUseCase {
      * @return empty when one of the versions does not exist
      */
     Optional<VersionDiff> diffPageVersions(PageRecord judged, int fromVersion, int toVersion);
+
+    /** @throws pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException when Confluence does not show the restrictions */
+    PageRestrictions getPageRestrictions(PageRecord page);
 
     Slice<Comment> listComments(PageRecord page, int start);
 

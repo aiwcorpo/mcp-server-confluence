@@ -29,6 +29,7 @@ import pl.aiwcorpo.mcp.confluence.tools.ToolResults.DiffResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.LabelsResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageResult;
+import pl.aiwcorpo.mcp.confluence.tools.ToolResults.RestrictionsResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.SpaceHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.SpaceResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.TrashedPage;
@@ -399,6 +400,20 @@ public class ConfluencePageTools {
         boolean macros = items.stream().anyMatch(item -> !item.omittedMacros().isEmpty());
         return new PagedResult<>(items, nextCursor(comments.nextStart(), "list_comments", fingerprint), false,
                 macros ? List.of("unsupported_macro") : List.of());
+    }
+
+    @Tool(name = "get_page_restrictions", description = "Returns who the view (read) and the edit (update) of a "
+            + "Confluence page are restricted to on that page: user display names and group names, at most 100 of each "
+            + "per operation (truncated is true when there are more). Empty lists mean no restriction on this page; "
+            + "restrictions of its ancestor pages also apply and are not included. E-mail addresses are not returned.")
+    @ToolRisk(RiskLevel.READ_ONLY)
+    @ToolTitle("Get page restrictions")
+    public RestrictionsResult getPageRestrictions(
+            @ToolParam(description = "Page id, a positive decimal number")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId) {
+        PageRecord page = judgedPage(pageId);
+        return RestrictionsResult.of(page.id(), useCase.getPageRestrictions(page));
     }
 
     @Tool(name = "list_labels", description = "Lists the labels of a Confluence page (global labels only), at most 200; "

@@ -13,6 +13,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRestrictions;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
@@ -199,6 +200,11 @@ public class ConfluenceService implements ConfluenceUseCase {
             }
         }
         return getPageVersion(judged, version);
+    }
+
+    @Override
+    public PageRestrictions getPageRestrictions(PageRecord page) {
+        return resource.findRestrictions(page.id()).orElseThrow(PageNotFoundException::new);
     }
 
     @Override

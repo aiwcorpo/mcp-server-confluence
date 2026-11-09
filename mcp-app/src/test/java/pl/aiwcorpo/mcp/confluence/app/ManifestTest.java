@@ -33,7 +33,7 @@ class ManifestTest extends ServerTestSupport {
             Map.entry("get_space", "READ_ONLY"), Map.entry("get_page_version", "READ_ONLY"),
             Map.entry("list_comments", "READ_ONLY"), Map.entry("list_labels", "READ_ONLY"),
             Map.entry("list_attachments", "READ_ONLY"), Map.entry("read_attachment", "READ_ONLY"),
-            Map.entry("search_content", "READ_ONLY"), Map.entry("get_space_page_tree", "READ_ONLY"), Map.entry("list_page_versions", "READ_ONLY"), Map.entry("diff_page_versions", "READ_ONLY"),
+            Map.entry("search_content", "READ_ONLY"), Map.entry("get_space_page_tree", "READ_ONLY"), Map.entry("get_page_restrictions", "READ_ONLY"), Map.entry("list_page_versions", "READ_ONLY"), Map.entry("diff_page_versions", "READ_ONLY"),
             Map.entry("create_page", "UPDATE"), Map.entry("update_page", "UPDATE"),
             Map.entry("add_comment", "UPDATE"), Map.entry("add_label", "UPDATE"),
             Map.entry("delete_page", "DESTRUCTIVE"));
@@ -45,7 +45,8 @@ class ManifestTest extends ServerTestSupport {
             Map.entry("get_space", "space:Confluence::Space"), Map.entry("get_page_version", "pageId:Confluence::Page"),
             Map.entry("list_comments", "pageId:Confluence::Page"), Map.entry("list_labels", "pageId:Confluence::Page"),
             Map.entry("list_attachments", "pageId:Confluence::Page"), Map.entry("read_attachment", "pageId:Confluence::Page"),
-            Map.entry("search_content", "space:Confluence::Space"), Map.entry("get_space_page_tree", "space:Confluence::Space"), Map.entry("list_page_versions", "pageId:Confluence::Page"), Map.entry("diff_page_versions", "pageId:Confluence::Page"),
+            Map.entry("search_content", "space:Confluence::Space"), Map.entry("get_space_page_tree", "space:Confluence::Space"),
+            Map.entry("get_page_restrictions", "pageId:Confluence::Page"), Map.entry("list_page_versions", "pageId:Confluence::Page"), Map.entry("diff_page_versions", "pageId:Confluence::Page"),
             Map.entry("create_page", "parentId:Confluence::Page,space:Confluence::Space"),
             Map.entry("update_page", "pageId:Confluence::Page"), Map.entry("add_comment", "pageId:Confluence::Page"),
             Map.entry("add_label", "pageId:Confluence::Page"), Map.entry("delete_page", "pageId:Confluence::Page"));
@@ -57,7 +58,8 @@ class ManifestTest extends ServerTestSupport {
             Map.entry("get_space", "Get space"), Map.entry("get_page_version", "Get page version"),
             Map.entry("list_comments", "List comments"), Map.entry("list_labels", "List labels"),
             Map.entry("list_attachments", "List attachments"), Map.entry("read_attachment", "Read attachment"),
-            Map.entry("search_content", "Search content with CQL"), Map.entry("get_space_page_tree", "Get space page tree"), Map.entry("list_page_versions", "List page versions"), Map.entry("diff_page_versions", "Diff page versions"),
+            Map.entry("search_content", "Search content with CQL"), Map.entry("get_space_page_tree", "Get space page tree"),
+            Map.entry("get_page_restrictions", "Get page restrictions"), Map.entry("list_page_versions", "List page versions"), Map.entry("diff_page_versions", "Diff page versions"),
             Map.entry("create_page", "Create page"), Map.entry("update_page", "Update page"),
             Map.entry("add_comment", "Add comment"), Map.entry("add_label", "Add label"),
             Map.entry("delete_page", "Delete page"));

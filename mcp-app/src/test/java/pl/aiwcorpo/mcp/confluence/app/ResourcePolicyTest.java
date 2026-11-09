@@ -89,7 +89,8 @@ class ResourcePolicyTest extends ServerTestSupport {
                     "get_space", Map.of("space", "ENG"),
                     "search_pages", Map.of("space", "ENG", "text", "release"),
                     "search_content", Map.of("space", "ENG", "cql", "text ~ \"release\""),
-                    "get_space_page_tree", Map.of("space", "ENG")).entrySet()) {
+                    "get_space_page_tree", Map.of("space", "ENG"),
+                    "get_page_restrictions", Map.of("pageId", "1000")).entrySet()) {
                 McpSchema.CallToolResult result = call(client, call.getKey(), call.getValue());
 
                 assertThat(result.isError()).as(call.getKey()).isTrue();

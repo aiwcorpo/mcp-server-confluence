@@ -48,6 +48,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotEditableException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRestrictions;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRejectedException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
@@ -107,6 +108,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
 
     static final int TITLE_MAX = 255;
     static final int LABEL_LIST_LIMIT = 200;
+    static final int RESTRICTION_LIST_LIMIT = 100;
 
     private static final String DEV_PROFILE = "dev";
     private static final Logger LOG = LoggerFactory.getLogger(ConfluenceResourceAdapter.class);
@@ -407,6 +409,36 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     // ---- comments, labels, attachments --------------------------------------------------------------------------
+
+    /**
+     * Only display names and group names are read: the user entries of Confluence carry the user key, the user name
+     * and sometimes an e-mail address, none of which is declared here, so none can reach the model.
+     */
+    @Override
+    public Optional<PageRestrictions> findRestrictions(String pageId) {
+        RestrictionsResponse response = send(() -> getJson(CONTENT + "/{id}/restriction/byOperation", Map.of("id", pageId),
+                query("expand", "restrictions.user,restrictions.group"), RestrictionsResponse.class), hidden(() -> null));
+        if (response == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new PageRestrictions(subjects(response.read()), subjects(response.update())));
+    }
+
+    private static PageRestrictions.Subjects subjects(OperationRestrictionsResponse operation) {
+        if (operation == null || operation.restrictions() == null) {
+            return PageRestrictions.Subjects.none();
+        }
+        SubjectListResponse<UserEntryResponse> users = operation.restrictions().user();
+        SubjectListResponse<GroupEntryResponse> groups = operation.restrictions().group();
+        List<String> userNames = users == null || users.results() == null ? List.of()
+                : users.results().stream().map(UserEntryResponse::displayName).filter(Objects::nonNull)
+                        .limit(RESTRICTION_LIST_LIMIT).toList();
+        List<String> groupNames = groups == null || groups.results() == null ? List.of()
+                : groups.results().stream().map(GroupEntryResponse::name).filter(Objects::nonNull)
+                        .limit(RESTRICTION_LIST_LIMIT).toList();
+        boolean cut = (users != null && users.mayHaveMore(userNames.size())) || (groups != null && groups.mayHaveMore(groupNames.size()));
+        return new PageRestrictions.Subjects(userNames, groupNames, cut);
+    }
 
     @Override
     public Slice<Comment> listComments(String pageId, int start, int limit) {
@@ -823,6 +855,37 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record TypedRefResponse(String id, String type) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record RestrictionsResponse(OperationRestrictionsResponse read, OperationRestrictionsResponse update) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record OperationRestrictionsResponse(RestrictionSubjectsResponse restrictions) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record RestrictionSubjectsResponse(SubjectListResponse<UserEntryResponse> user,
+                                       SubjectListResponse<GroupEntryResponse> group) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SubjectListResponse<T>(List<T> results, Integer size, Integer limit, LinksResponse _links) {
+
+        /** True when the list is longer than what was kept, or Confluence says it stopped at its own limit. */
+        boolean mayHaveMore(int kept) {
+            return results != null && results.size() > kept || size != null && limit != null && size >= limit
+                    || _links != null && _links.next() != null;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record UserEntryResponse(String displayName) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record GroupEntryResponse(String name) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -6,6 +6,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
 import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRestrictions;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
@@ -112,6 +113,23 @@ public final class ToolResults {
         static DiffResult of(VersionDiff diff) {
             return new DiffResult(diff.fromVersion(), diff.toVersion(), UntrustedText.plainCut(diff.diff(), diff.truncated()),
                     diff.identical(), diff.omitted());
+        }
+    }
+
+    /** Names of the users and groups an operation is restricted to; empty lists mean it is not restricted on this page. */
+    public record RestrictedTo(List<UntrustedText> users, List<UntrustedText> groups, boolean truncated) {
+
+        static RestrictedTo of(PageRestrictions.Subjects subjects) {
+            return new RestrictedTo(subjects.users().stream().map(name -> UntrustedText.plain(name, TITLE_MAX)).toList(),
+                    subjects.groups().stream().map(name -> UntrustedText.plain(name, TITLE_MAX)).toList(),
+                    subjects.truncated());
+        }
+    }
+
+    public record RestrictionsResult(String pageId, RestrictedTo read, RestrictedTo update) {
+
+        static RestrictionsResult of(String pageId, PageRestrictions restrictions) {
+            return new RestrictionsResult(pageId, RestrictedTo.of(restrictions.read()), RestrictedTo.of(restrictions.update()));
         }
     }
 

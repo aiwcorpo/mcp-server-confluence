@@ -13,6 +13,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRestrictions;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
@@ -75,6 +76,9 @@ public interface ConfluenceResourcePort {
      * Confluence does not serve as a historical version. Empty when that version does not exist or is not shown.
      */
     Optional<PageVersion> findPageVersionInfo(String pageId, int version, boolean current);
+
+    /** The restrictions set on this page for viewing and editing; empty when Confluence does not show them to the caller. */
+    Optional<PageRestrictions> findRestrictions(String pageId);
 
     Slice<Comment> listComments(String pageId, int start, int limit);
 

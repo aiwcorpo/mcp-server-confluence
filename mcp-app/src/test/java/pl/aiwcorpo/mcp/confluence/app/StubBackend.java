@@ -180,6 +180,8 @@ final class StubBackend {
                 comments(exchange, parts[0], query);
             } else if (parts.length == 3 && "child".equals(parts[1]) && "attachment".equals(parts[2])) {
                 attachments(exchange, parts[0], query);
+            } else if (parts.length == 3 && "restriction".equals(parts[1]) && "byOperation".equals(parts[2])) {
+                restrictions(exchange, parts[0], query);
             } else if (parts.length == 2 && "label".equals(parts[1])) {
                 labels(exchange, parts[0], method, body);
             } else {
@@ -348,6 +350,56 @@ final class StubBackend {
         }
         response.put("start", 0).put("limit", 200).put("size", results.size());
         respond(exchange, 200, response.toString());
+    }
+
+    /**
+     * Restrictions by operation as Confluence 8/9 answers them with {@code expand=restrictions.user,restrictions.group}:
+     * user entries carry the user key, user name and an e-mail address, which the server must not pass on. Page 1000:
+     * read restricted to one user and one group, update to one user; 1700: update restricted to 100 groups (the list
+     * stops at its limit); other pages have no restrictions.
+     */
+    private void restrictions(HttpExchange exchange, String pageId, Map<String, String> query) throws IOException {
+        if (!FIXTURES.containsKey(pageId)) {
+            respond(exchange, 404, error(404, "No content found with id: ContentId{id=" + pageId + "}"));
+            return;
+        }
+        ObjectNode response = JSON.createObjectNode();
+        ObjectNode read = restrictionOperation(response, "read");
+        ObjectNode update = restrictionOperation(response, "update");
+        if ("1000".equals(pageId)) {
+            restrictedUser(read, "Anna Nowak", "anowak");
+            subjects(read, "group").withArray("results").addObject().put("type", "group").put("name", "engineering");
+            subjects(read, "group").put("size", 1);
+            restrictedUser(update, "Jan Kowalski", "jkowalski");
+        } else if ("1700".equals(pageId)) {
+            ArrayNode groups = subjects(update, "group").withArray("results");
+            for (int i = 0; i < 100; i++) {
+                groups.addObject().put("type", "group").put("name", "group-" + i);
+            }
+            subjects(update, "group").put("size", 100).put("limit", 100);
+        }
+        response.putObject("_links").put("self", baseUrl() + "/rest/api/content/" + pageId + "/restriction/byOperation");
+        respond(exchange, 200, response.toString());
+    }
+
+    private static ObjectNode subjects(ObjectNode operation, String kind) {
+        return (ObjectNode) operation.get("restrictions").get(kind);
+    }
+
+    private static ObjectNode restrictionOperation(ObjectNode response, String name) {
+        ObjectNode operation = response.putObject(name).put("operation", name);
+        ObjectNode restrictions = operation.putObject("restrictions");
+        restrictions.putObject("user").put("start", 0).put("limit", 200).put("size", 0).putArray("results");
+        restrictions.putObject("group").put("start", 0).put("limit", 200).put("size", 0).putArray("results");
+        return operation;
+    }
+
+    private static void restrictedUser(ObjectNode operation, String displayName, String username) {
+        ObjectNode users = subjects(operation, "user");
+        users.withArray("results").addObject().put("type", "known").put("username", username)
+                .put("userKey", "8a7f808a-" + username).put("displayName", displayName)
+                .put("email", username + "@corp.invalid");
+        users.put("size", 1);
     }
 
     private record AttachmentFixture(String id, String page, String title, String mediaType, long size, String text) {
