@@ -89,6 +89,8 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     static final String PAGE_EXPAND = "body.storage,space,version,ancestors";
     static final String RECORD_EXPAND = "space,version,ancestors";
     static final String SUMMARY_EXPAND = "space,version";
+    /** The tree needs no version, and a window of pages should stay well under the response size limit. */
+    static final String TREE_EXPAND = "space,ancestors";
     static final String SPACE_EXPAND = "metadata.labels";
     static final String VERSION_EXPAND = "version,space";
     static final String COMMENT_EXPAND = "body.storage,version,ancestors,container,extensions.inlineProperties";
@@ -188,6 +190,20 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
                 query("type", "page", "status", "current", "spaceKey", spaceKey, "start", start, "limit", limit,
                         "expand", SUMMARY_EXPAND), SearchResponse.class), hidden(() -> null));
         return pageSlice(response, start);
+    }
+
+    @Override
+    public Slice<PageRecord> listSpacePages(String spaceKey, int start, int limit) {
+        SearchResponse response = send(() -> getJson(CONTENT, Map.of(),
+                query("type", "page", "status", "current", "spaceKey", spaceKey, "start", start, "limit", limit,
+                        "expand", TREE_EXPAND), SearchResponse.class), hidden(() -> null));
+        if (response == null || response.results() == null) {
+            return Slice.empty();
+        }
+        List<PageRecord> pages = response.results().stream().map(ContentResponse::withId)
+                .filter(ContentResponse::isCurrentPage).filter(ContentResponse::isInGlobalSpace)
+                .map(content -> toRecord(content, null)).toList();
+        return new Slice<>(pages, nextStart(start, response.results().size(), response._links()));
     }
 
     @Override

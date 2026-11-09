@@ -30,6 +30,9 @@ public class ConfluenceService implements ConfluenceUseCase {
     /** Window size of every list; also what Confluence is asked for. */
     static final int PAGE_SIZE = 25;
 
+    /** Window of the page tree: ids and titles only, so larger than the other lists. */
+    static final int TREE_WINDOW = 50;
+
     /** Comments are long, so their window is smaller: 10 comments of at most 4000 characters stay under 50 KB. */
     static final int COMMENT_WINDOW = 10;
 
@@ -86,6 +89,13 @@ public class ConfluenceService implements ConfluenceUseCase {
     public Slice<PageSummary> listPages(String spaceKey, int start) {
         Slice<PageSummary> found = resource.listPages(spaceKey, start, PAGE_SIZE);
         return new Slice<>(found.items().stream().filter(hit -> spaceKey.equalsIgnoreCase(hit.spaceKey())).toList(),
+                found.nextStart());
+    }
+
+    @Override
+    public Slice<PageRecord> listSpacePages(String spaceKey, int start) {
+        Slice<PageRecord> found = resource.listSpacePages(spaceKey, start, TREE_WINDOW);
+        return new Slice<>(found.items().stream().filter(page -> spaceKey.equalsIgnoreCase(page.spaceKey())).toList(),
                 found.nextStart());
     }
 

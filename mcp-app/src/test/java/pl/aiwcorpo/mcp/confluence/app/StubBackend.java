@@ -733,6 +733,7 @@ final class StubBackend {
         labels.put("FULL", List.of("a", "b"));
         labels.put("BIG", List.of());
         labels.put("IDX", List.of());
+        labels.put("HUGE", List.of());
         for (String ordinary : List.of("SECRET", "REDIR", "BAD", "FAIL")) {
             labels.put(ordinary, List.of());
         }
@@ -776,6 +777,10 @@ final class StubBackend {
         for (int i = 0; i < 30; i++) {
             String id = String.valueOf(9000 + i);
             fixtures.put(id, new Fixture(id, "page", "BIG", "Bulk " + i, 1, List.of(), "<p>bulk " + i + "</p>", null));
+        }
+        for (int i = 0; i < 230; i++) {
+            String id = String.valueOf(20000 + i);
+            fixtures.put(id, new Fixture(id, "page", "HUGE", "Huge " + i, 1, List.of(), "<p>h</p>", null));
         }
         return fixtures;
     }

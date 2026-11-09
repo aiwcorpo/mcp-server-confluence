@@ -49,6 +49,15 @@ public final class ToolResults {
         }
     }
 
+    /** One page of the space tree; {@code parentId} is null for a root, {@code depth} counts from 0 at the roots. */
+    public record TreeItem(@ResourceRef(type = "Confluence::Page") String id, UntrustedText title,
+                           @Nullable String parentId, int depth) {
+
+        static TreeItem of(SpacePageTree.Node node) {
+            return new TreeItem(node.page().id(), titleText(node.page().title()), node.parentId(), node.depth());
+        }
+    }
+
     /** {@code key} is a {@code @ResourceRef}: a space the caller's policy does not allow is dropped from the list. */
     public record SpaceHit(@ResourceRef(type = "Confluence::Space") String key, UntrustedText name) {
 

@@ -37,6 +37,12 @@ public interface ConfluenceUseCase {
 
     Slice<PageSummary> listPages(String spaceKey, int start);
 
+    /**
+     * One window of up to 50 current pages of the space with their ancestor ids, in Confluence's own order, for building
+     * the page tree. Pages Confluence returns from another space are dropped; the caller judges the rest by id.
+     */
+    Slice<PageRecord> listSpacePages(String spaceKey, int start);
+
     Slice<PageSummary> listChildPages(PageRecord parent, int start);
 
     Slice<Space> listSpaces(int start);

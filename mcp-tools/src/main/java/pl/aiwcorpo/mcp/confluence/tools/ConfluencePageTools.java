@@ -1,5 +1,6 @@
 package pl.aiwcorpo.mcp.confluence.tools;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.springframework.ai.tool.annotation.Tool;
@@ -31,6 +32,7 @@ import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.SpaceHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.SpaceResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.TrashedPage;
+import pl.aiwcorpo.mcp.confluence.tools.ToolResults.TreeItem;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.VersionItem;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.WrittenPage;
 import pl.aiwcorpo.mcp.platform.error.InvalidToolArgumentException;
@@ -68,6 +70,10 @@ public class ConfluencePageTools {
     static final int BODY_MAX = 20_000;
     static final int COMMENT_MAX = 10_000;
     static final int PAGE_SIZE = 25;
+    static final int TREE_MAX_PAGES = 200;
+    static final int TREE_MAX_READS = 10;
+    static final int TREE_DEFAULT_DEPTH = 5;
+    static final int TREE_MAX_DEPTH = 10;
 
     /** Single line with at least one non-space character. */
     static final String NON_BLANK_LINE = "^(?=.*\\S)[^\\u0000-\\u001f\\u007f]+$";
@@ -208,6 +214,50 @@ public class ConfluencePageTools {
         String position = positionOf(cursor, "list_child_pages", fingerprint);
         return filledPage(position, "list_child_pages", fingerprint, ConfluenceResourceModel.PAGE_TYPE, PageSummary::id,
                 start -> useCase.listChildPages(parent, start), PageHit::of);
+    }
+
+    /**
+     * Not paged: the tree is built from a flat list, so a cursor would split it in the middle of a subtree. The read is
+     * bounded instead (at most 10 windows of 50 pages, 200 pages returned) and says when it stopped short.
+     */
+    @Tool(name = "get_space_page_tree", description = "Returns the page tree of one Confluence space as a flat list in "
+            + "tree order (a parent, then its children): id, title, parent id (null for a top-level page) and depth "
+            + "(0 for top-level pages). At most 200 pages and maxDepth levels (default 5, at most 10) are returned; "
+            + "truncated is true and omitted holds page_limit or depth_limit when pages were left out. A page that is "
+            + "not shown to the caller is not listed and a page below it is then shown as a top-level page.")
+    @ToolRisk(RiskLevel.READ_ONLY)
+    @ToolTitle("Get space page tree")
+    public PagedResult<TreeItem> getSpacePageTree(
+            @ToolParam(description = "Key of the space, letters and digits only")
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, resourceType = ConfluenceResourceModel.SPACE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
+            @ToolParam(required = false, description = "Number of levels to return, 1 to 10; 1 lists only top-level pages")
+            @ArgumentLimits(minimum = 1, maximum = TREE_MAX_DEPTH) @Nullable Integer maxDepth) {
+        String spaceKey = judgedSpace(validSpace(space)).key();
+        int depth = maxDepth == null ? TREE_DEFAULT_DEPTH : maxDepth;
+        if (depth < 1 || depth > TREE_MAX_DEPTH) {
+            throw new InvalidToolArgumentException("maxDepth must be 1-" + TREE_MAX_DEPTH);
+        }
+        List<PageRecord> allowed = new ArrayList<>();
+        Integer next = 0;
+        int reads = 0;
+        while (next != null && reads < TREE_MAX_READS && allowed.size() <= TREE_MAX_PAGES) {
+            Slice<PageRecord> window = useCase.listSpacePages(spaceKey, next);
+            reads++;
+            allowed.addAll(policy.retainAllowedById(ConfluenceResourceModel.PAGE_TYPE, window.items(), PageRecord::id));
+            next = window.nextStart();
+        }
+        SpacePageTree.Result tree = SpacePageTree.build(allowed, depth, TREE_MAX_PAGES);
+        boolean pageLimit = next != null || tree.countCut();
+        List<String> omitted = new ArrayList<>();
+        if (pageLimit) {
+            omitted.add("page_limit");
+        }
+        if (tree.depthCut()) {
+            omitted.add("depth_limit");
+        }
+        return new PagedResult<>(tree.nodes().stream().map(TreeItem::of).toList(), null, pageLimit || tree.depthCut(),
+                omitted);
     }
 
     @Tool(name = "list_spaces", description = "Lists the global Confluence spaces the user can see, about 25 per call, "

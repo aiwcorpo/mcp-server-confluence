@@ -37,6 +37,12 @@ public interface ConfluenceResourcePort {
     /** Current pages of one space in Confluence's own order. */
     Slice<PageSummary> listPages(String spaceKey, int start, int limit);
 
+    /**
+     * Current pages of one space with their ancestors, in Confluence's own order; the labels of the space are not
+     * looked up (null), the policy judges the pages by id.
+     */
+    Slice<PageRecord> listSpacePages(String spaceKey, int start, int limit);
+
     /** Direct children (pages) of a page. */
     Slice<PageSummary> listChildPages(String pageId, int start, int limit);
 

@@ -171,6 +171,16 @@ class ConfluenceServiceTest {
     }
 
     @Test
+    void spacePagesOfAnotherSpaceAreDroppedFromTheTreeWindow() {
+        calls.put("listSpacePages", args -> new Slice<>(List.of(record("1", "ENG", List.of()), record("2", "HR", List.of())), 50));
+
+        Slice<PageRecord> window = service.listSpacePages("ENG", 0);
+
+        assertThat(window.items()).extracting(PageRecord::id).containsExactly("1");
+        assertThat(window.nextStart()).isEqualTo(50);
+    }
+
+    @Test
     void theHistoryIsReadInWindowsOfTwentyNumbersFromTheNewestAndSkipsWhatIsNotShown() {
         List<String> asked = new ArrayList<>();
         calls.put("findPageVersionInfo", args -> {

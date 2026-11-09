@@ -20,6 +20,9 @@ Major release: the policies of the server live in this repository. Built on `mcp
 - New tool `search_content`: CQL written by the caller, confined to one space the policy allows (the condition is scanned, wrapped in parentheses and
   followed by the server's `space in (...) AND type = page`), at most 500 characters, paged with the signed cursor, with an excerpt as untrusted
   text. Hits are looked up by id and judged by the space they are in now and by the policy, like those of `search_pages`.
+- New tool `get_space_page_tree`: id, title, parent id and depth of the pages of a space in tree order, read in windows of 50 and bounded to 200 pages
+  and `maxDepth` levels (default 5, at most 10), with `truncated` and the codes `page_limit` and `depth_limit` in `omitted`. Every page is judged by
+  the policy; the parent id of a page that is not shown is not returned.
 - Cedar policies in `mcp-app/src/main/resources/mcp/policies/` (schema in the namespace `Confluence`, `resource-types.json`,
   `read.cedar`, `update.cedar`), carried in the manifest with `policiesHash`. They replace `policies/confluence/` of the `mcp-policies`
   repository; the rules are the same, except what the platform now generates for every server: the call rules by group, the forbid
