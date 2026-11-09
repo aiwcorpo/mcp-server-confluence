@@ -17,6 +17,9 @@ Major release: the policies of the server live in this repository. Built on `mcp
 - New tools `list_page_versions` (author, time and comment of each stored version, newest first, 20 per call) and `diff_page_versions` (unified line
   diff of the plain text of two versions, computed in the server, capped at 2000 lines per body and 50000 characters of diff). Both read the page under
   the same policy as `get_page`.
+- New tool `search_content`: CQL written by the caller, confined to one space the policy allows (the condition is scanned, wrapped in parentheses and
+  followed by the server's `space in (...) AND type = page`), at most 500 characters, paged with the signed cursor, with an excerpt as untrusted
+  text. Hits are looked up by id and judged by the space they are in now and by the policy, like those of `search_pages`.
 - Cedar policies in `mcp-app/src/main/resources/mcp/policies/` (schema in the namespace `Confluence`, `resource-types.json`,
   `read.cedar`, `update.cedar`), carried in the manifest with `policiesHash`. They replace `policies/confluence/` of the `mcp-policies`
   repository; the rules are the same, except what the platform now generates for every server: the call rules by group, the forbid

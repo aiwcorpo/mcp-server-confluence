@@ -8,6 +8,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
+import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.domain.VersionDiff;
 import pl.aiwcorpo.mcp.platform.resource.ResourceRef;
@@ -23,6 +24,7 @@ public final class ToolResults {
 
     static final int TITLE_MAX = 255;
     static final int MEDIA_TYPE_MAX = 100;
+    static final int EXCERPT_MAX = 500;
     static final int VERSION_MESSAGE_MAX = 500;
 
     private ToolResults() {
@@ -33,6 +35,17 @@ public final class ToolResults {
 
         static PageHit of(PageSummary page) {
             return new PageHit(page.id(), titleText(page.title()), page.version(), page.lastUpdated());
+        }
+    }
+
+    /** A {@link PageHit} with the text Confluence found around the match; the excerpt is text from a page, so untrusted. */
+    public record ContentSearchHit(@ResourceRef(type = "Confluence::Page") String id, UntrustedText title, int version,
+                                   @Nullable String lastUpdated, UntrustedText excerpt) {
+
+        static ContentSearchHit of(SearchHit hit) {
+            PageSummary page = hit.page();
+            return new ContentSearchHit(page.id(), titleText(page.title()), page.version(), page.lastUpdated(),
+                    UntrustedText.plain(hit.excerpt(), EXCERPT_MAX));
         }
     }
 

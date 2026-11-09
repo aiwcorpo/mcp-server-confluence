@@ -14,6 +14,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
+import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.port.in.ConfluenceUseCase;
@@ -22,6 +23,7 @@ import pl.aiwcorpo.mcp.confluence.tools.ToolResults.AddedLabel;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.AttachmentContent;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.AttachmentItem;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.CommentItem;
+import pl.aiwcorpo.mcp.confluence.tools.ToolResults.ContentSearchHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.DiffResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.LabelsResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageHit;
@@ -77,6 +79,7 @@ public class ConfluencePageTools {
     static final String EDIT_MODE = "^(?:append|replace)$";
 
     private static final String SEARCH_TOOL = "search_pages";
+    private static final String CONTENT_SEARCH_TOOL = "search_content";
 
     private final ConfluenceUseCase useCase;
     private final ResourcePolicy policy;
@@ -138,6 +141,39 @@ public class ConfluencePageTools {
         String cql = query.build();
         return filledPage(position, SEARCH_TOOL, fingerprint, ConfluenceResourceModel.PAGE_TYPE, PageSummary::id,
                 start -> useCase.searchPages(spaceKey, cql, start), PageHit::of);
+    }
+
+    /**
+     * The one tool that takes query text from the model. The caller's CQL is confined three times: the space is a
+     * {@code @ResourceRef} the policy judged; the text is scanned and wrapped by {@link CqlConfinement}, so the server's
+     * space clause and {@code type = page} are ANDed outside it; and every hit is looked up by id and kept only if
+     * Confluence puts it in that space now and the policy allows the page ({@code filledPage}).
+     */
+    @Tool(name = CONTENT_SEARCH_TOOL, description = "Searches the current pages of one Confluence space with a CQL "
+            + "condition written by the caller, for example: text ~ \"release\" AND label = \"handbook\". The space "
+            + "and type = page are added by the server, so the query cannot reach other spaces or other content; "
+            + "fields such as space and type in the condition only narrow it further. The condition is at most 500 "
+            + "characters; outside quoted strings only letters, digits, spaces and _ . , = ! ~ < > ( ) are accepted, "
+            + "and the only ORDER BY allowed is a trailing one on created, lastmodified or title. Returns about 25 "
+            + "pages per call, each with id, title, version, last update time and an excerpt of the text around the "
+            + "match, and nextCursor when more follow.")
+    @ToolRisk(RiskLevel.READ_ONLY)
+    @ToolTitle("Search content with CQL")
+    public PagedResult<ContentSearchHit> searchContent(
+            @ToolParam(description = "Key of the space to search, letters and digits only")
+            @ArgumentLimits(minLength = 1, maxLength = SPACE_KEY_MAX, resourceType = ConfluenceResourceModel.SPACE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.SPACE_TYPE) String space,
+            @ToolParam(description = "CQL condition, at most 500 characters, one line")
+            @ArgumentLimits(minLength = 1, maxLength = CqlConfinement.MAX_LENGTH, pattern = NON_BLANK_LINE) String cql,
+            @ToolParam(required = false, description = "nextCursor of the previous call with the same arguments")
+            @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
+        String spaceKey = judgedSpace(validSpace(space)).key();
+        QueryScope scope = policy.queryScope(ConfluenceResourceModel.SPACE_TYPE).narrowedTo(List.of(spaceKey));
+        String confined = CqlConfinement.confine(cql, scope.cqlSpaceClause().orElseThrow());
+        String fingerprint = CursorCodec.fingerprint(spaceKey, confined);
+        String position = positionOf(cursor, CONTENT_SEARCH_TOOL, fingerprint);
+        return filledPage(position, CONTENT_SEARCH_TOOL, fingerprint, ConfluenceResourceModel.PAGE_TYPE,
+                (SearchHit hit) -> hit.page().id(), start -> useCase.searchContent(spaceKey, confined, start), ContentSearchHit::of);
     }
 
     @Tool(name = "list_pages", description = "Lists the current pages of one Confluence space in Confluence's own "

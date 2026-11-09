@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
+import pl.aiwcorpo.mcp.confluence.core.domain.ContentHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewComment;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
@@ -21,6 +22,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageText;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
+import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.WritesNotVerifiedException;
 import pl.aiwcorpo.mcp.confluence.core.port.out.ConfluenceResourcePort;
@@ -152,6 +154,20 @@ class ConfluenceServiceTest {
 
         assertThatThrownBy(() -> service.getPageVersion(record("10", "ENG", List.of()), 1))
                 .isInstanceOf(PageNotFoundException.class);
+    }
+
+    @Test
+    void aContentHitIsKeptOnlyWhereALookupByIdPutsThePageInTheSpaceNow() {
+        calls.put("searchContent", args -> new Slice<>(List.of(new ContentHit("1", "one"), new ContentHit("2", "two"),
+                new ContentHit("3", "three"), new ContentHit("4", "four")), 25));
+        calls.put("findPageRecords", args -> Map.of("1", record("1", "ENG", List.of()), "2", record("2", "HR", List.of()),
+                "4", record("4", "eng", List.of())));
+
+        Slice<SearchHit> found = service.searchContent("ENG", "(x) AND space in (\"ENG\") AND type = page", 0);
+
+        assertThat(found.items()).extracting(hit -> hit.page().id()).as("2 is in HR now, 3 is not shown").containsExactly("1", "4");
+        assertThat(found.items()).extracting(SearchHit::excerpt).containsExactly("one", "four");
+        assertThat(found.nextStart()).isEqualTo(25);
     }
 
     @Test

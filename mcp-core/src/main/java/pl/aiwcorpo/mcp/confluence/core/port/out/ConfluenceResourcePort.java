@@ -7,6 +7,7 @@ import java.util.Optional;
 import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
 import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
+import pl.aiwcorpo.mcp.confluence.core.domain.ContentHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewComment;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
@@ -26,6 +27,12 @@ public interface ConfluenceResourcePort {
 
     /** Current pages matching {@code cql}, a query the server built (never text from the model). */
     Slice<PageSummary> searchPages(String cql, int start, int limit);
+
+    /**
+     * Pages found by {@code cql}, with the excerpt of the search endpoint. The query is confined by the tool to one space
+     * and to pages; the hits say nothing about where a page lives, so the caller looks them up.
+     */
+    Slice<ContentHit> searchContent(String cql, int start, int limit);
 
     /** Current pages of one space in Confluence's own order. */
     Slice<PageSummary> listPages(String spaceKey, int start, int limit);

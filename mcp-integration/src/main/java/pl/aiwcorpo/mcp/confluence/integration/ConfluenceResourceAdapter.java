@@ -39,6 +39,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
 import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.ConfluenceIds;
+import pl.aiwcorpo.mcp.confluence.core.domain.ContentHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewComment;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
@@ -84,6 +85,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
 
     static final String CONTENT = "/rest/api/content";
     static final String SPACE = "/rest/api/space";
+    static final String SEARCH = "/rest/api/search";
     static final String PAGE_EXPAND = "body.storage,space,version,ancestors";
     static final String RECORD_EXPAND = "space,version,ancestors";
     static final String SUMMARY_EXPAND = "space,version";
@@ -151,6 +153,33 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
                         // Text made only of words CQL reserves; the value stays out of the message (it came from the model).
                         "Confluence did not accept the search words; try other words"), () -> null));
         return pageSlice(response, start);
+    }
+
+    /**
+     * {@code /rest/api/search} and not {@code content/search}, because only it returns the excerpt. {@code excerpt=indexed}
+     * asks for the stored text without highlight markers; the markers are removed anyway.
+     */
+    @Override
+    public Slice<ContentHit> searchContent(String cql, int start, int limit) {
+        SearchResultsResponse response = send(() -> getJson(SEARCH, Map.of(),
+                        query("cql", cql, "start", start, "limit", limit, "excerpt", "indexed"), SearchResultsResponse.class),
+                rejected(() -> new InvalidToolArgumentException("Confluence did not accept the query"), () -> null));
+        if (response == null || response.results() == null) {
+            return Slice.empty();
+        }
+        List<ContentHit> hits = response.results().stream()
+                .filter(result -> result.content() != null && "page".equals(result.content().type())
+                        && ConfluenceIds.isPageId(result.content().id()))
+                .map(result -> new ContentHit(result.content().id(), excerptText(result.excerpt()))).toList();
+        return new Slice<>(hits, nextStart(start, response.results().size(), response._links()));
+    }
+
+    private static String excerptText(String excerpt) {
+        if (excerpt == null) {
+            return "";
+        }
+        return TextHygiene.normalize(excerpt.replace("@@@hl@@@", "").replace("@@@endhl@@@", ""))
+                .replaceAll("\\s+", " ").strip();
     }
 
     @Override
@@ -766,6 +795,18 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record SearchResponse(List<ContentResponse> results, Integer size, Integer limit, LinksResponse _links) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SearchResultsResponse(List<SearchResultResponse> results, Integer size, Integer limit, LinksResponse _links) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record SearchResultResponse(TypedRefResponse content, String excerpt) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record TypedRefResponse(String id, String type) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

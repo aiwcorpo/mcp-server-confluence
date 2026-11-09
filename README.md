@@ -31,13 +31,16 @@ state is in the log (`backend capability: probe=confluence state=...`), in the m
 
 ## Tools
 
-19 tools: 14 `READ_ONLY`, 4 `UPDATE` and 1 `DESTRUCTIVE` (`delete_page`, which needs the confirmation code the gateway checks).
+20 tools: 15 `READ_ONLY`, 4 `UPDATE` and 1 `DESTRUCTIVE` (`delete_page`, which needs the confirmation code the gateway checks).
 A client sees them as `confluence__<name>`. The generated table with each tool's title, risk, action and required group is in
 `docs/reference/tools.md` of the `mcp-docs` repository (link below). It is not repeated here.
 
 Reads cover search, pages, child pages, spaces, page versions (a stored version, the version history and a line diff of two versions), comments, labels and text attachments. `diff_page_versions` computes the diff in the server from the plain text of both versions, because Confluence Data Center has no diff endpoint; `list_page_versions` asks for the version numbers one by one (20 per call), because the public REST API has no version list. Writes create and
-update pages (`update_page` takes `expectedVersion` and refuses a stale one), add comments and labels. Search queries are
-built by the server from structured arguments; no tool accepts raw CQL.
+update pages (`update_page` takes `expectedVersion` and refuses a stale one), add comments and labels. `search_pages` builds its query in the server from structured arguments. `search_content` is the one tool that takes
+CQL from the caller: it needs a `space` the policy allows, the condition (at most 500 characters) is scanned and wrapped in
+parentheses, and the server ANDs `space in (...)` and `type = page` outside it, so a condition cannot reach another space or other
+content. Every hit is then looked up by id and kept only if Confluence puts the page in that space now and the policy allows it. It
+uses `/rest/api/search` (not `content/search`) because only that endpoint returns the excerpt.
 
 ## Build and test
 

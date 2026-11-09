@@ -88,6 +88,7 @@ final class StubBackend {
             StubBackend backend = new StubBackend(server);
             server.createContext("/rest/api/content", backend::handle);
             server.createContext("/rest/api/space", backend::handle);
+            server.createContext("/rest/api/search", backend::siteSearch);
             server.createContext("/rest/api/server-information", backend::probe);
             server.createContext("/rest/applinks/1.0/manifest", backend::probe);
             server.createContext("/download/attachments", backend::download);
@@ -596,6 +597,60 @@ final class StubBackend {
         response.putObject("_links").put("base", baseUrl()).put("context", "")
                 .put("self", baseUrl() + "/rest/api/content/search");
         respond(exchange, 200, response.toString());
+    }
+
+    /**
+     * {@code /rest/api/search}: hits with an excerpt and without any space. Searching ENG returns the pages of ENG, a
+     * blog post, a comment and pages that are in HR or OPS now; the index lists them all, which real Confluence would
+     * not, so the server must look every hit up and drop what is not in the space asked for.
+     */
+    private void siteSearch(HttpExchange exchange) throws IOException {
+        String authorization = String.valueOf(exchange.getRequestHeaders().getFirst("Authorization"));
+        Map<String, String> query = query(exchange.getRequestURI().getRawQuery());
+        requests.add(new Request(exchange.getRequestMethod(), exchange.getRequestURI().getRawPath(), query, authorization, ""));
+        String cql = query.getOrDefault("cql", "");
+        if (EXPIRED_CREDENTIAL.equals(authorization)) {
+            respond(exchange, 401, error(401, "Unauthorized"));
+            return;
+        }
+        if (cql.contains("\"REDIR\"")) {
+            redirect(exchange);
+            return;
+        }
+        if (cql.contains("\"BAD\"")) {
+            respond(exchange, 400, error(400, "Could not parse cql: " + BODY_MARKER));
+            return;
+        }
+        ObjectNode response = JSON.createObjectNode();
+        ArrayNode results = response.putArray("results");
+        if (cql.contains("space in (\"IDX\")")) {
+            for (int i = 0; i < 40; i++) {
+                searchHit(results, String.valueOf(8000 + i), "Moved " + i, "moved text " + i);
+            }
+        } else if (cql.contains("space in (\"BIG\")")) {
+            for (int i = 0; i < 30; i++) {
+                searchHit(results, String.valueOf(9000 + i), "Bulk " + i, "bulk " + i);
+            }
+        } else if (cql.contains("space in (\"ENG\")")) {
+            searchHit(results, "1000", "Engineering home", "Welcome to @@@hl@@@engineering@@@endhl@@@.\n\n  Second   line");
+            searchHit(results, "1001", "Release notes", "Release 2.1 ships on Friday.");
+            searchHit(results, "1002", "Team news", "News");
+            searchHit(results, "2000", "Salaries", HR_SECRET);
+            searchHit(results, "4002", "Operations home", "Operations.");
+            searchHit(results, "9999", "Gone", "no such page now");
+            results.addObject().put("title", "Comment").put("excerpt", "a comment").putObject("content")
+                    .put("id", "7001").put("type", "comment").put("status", "current");
+        }
+        window(exchange, response, query, "/rest/api/search");
+    }
+
+    private static void searchHit(ArrayNode results, String id, String title, String excerpt) {
+        Fixture fixture = FIXTURES.get(id);
+        ObjectNode hit = results.addObject();
+        hit.putObject("content").put("id", id).put("type", fixture == null ? "page" : fixture.type())
+                .put("status", "current").put("title", title);
+        hit.put("title", title).put("excerpt", excerpt).put("url", "/pages/viewpage.action?pageId=" + id)
+                .put("lastModified", "2026-10-20T10:15:30.000+02:00");
     }
 
     private void create(HttpExchange exchange, JsonNode request) throws IOException {

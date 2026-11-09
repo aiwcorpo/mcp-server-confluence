@@ -1,10 +1,12 @@
 package pl.aiwcorpo.mcp.confluence.application.service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
 import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
+import pl.aiwcorpo.mcp.confluence.core.domain.ContentHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewComment;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
@@ -13,6 +15,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
+import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.domain.VersionDiff;
@@ -60,6 +63,23 @@ public class ConfluenceService implements ConfluenceUseCase {
         Slice<PageSummary> found = resource.searchPages(cql, start, PAGE_SIZE);
         return new Slice<>(found.items().stream().filter(hit -> spaceKey.equalsIgnoreCase(hit.spaceKey())).toList(),
                 found.nextStart());
+    }
+
+    /**
+     * The search endpoint does not say where a hit lives, so every hit is looked up by id and kept only when Confluence
+     * puts it in the named space right now. A hit that cannot be looked up (not shown to the caller) is dropped.
+     */
+    @Override
+    public Slice<SearchHit> searchContent(String spaceKey, String cql, int start) {
+        Slice<ContentHit> found = resource.searchContent(cql, start, PAGE_SIZE);
+        if (found.items().isEmpty()) {
+            return new Slice<>(List.of(), found.nextStart());
+        }
+        Map<String, PageRecord> pages = resource.findPageRecords(found.items().stream().map(ContentHit::id).toList());
+        List<SearchHit> hits = found.items().stream()
+                .filter(hit -> pages.containsKey(hit.id()) && spaceKey.equalsIgnoreCase(pages.get(hit.id()).spaceKey()))
+                .map(hit -> new SearchHit(pages.get(hit.id()).summary(), hit.excerpt())).toList();
+        return new Slice<>(hits, found.nextStart());
     }
 
     @Override

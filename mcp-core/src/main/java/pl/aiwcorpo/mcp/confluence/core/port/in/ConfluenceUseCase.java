@@ -9,6 +9,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.SearchHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
@@ -26,6 +27,13 @@ public interface ConfluenceUseCase {
      * across spaces. Hits from other spaces are dropped from the window.
      */
     Slice<PageSummary> searchPages(String spaceKey, String cql, int start);
+
+    /**
+     * Pages of {@code spaceKey} found by a confined query written by the caller ({@code CqlConfinement}), each with its
+     * excerpt. A hit is kept only when a lookup by id puts the page in {@code spaceKey} now, whatever the index says;
+     * which of those the caller may see is the starter's result filter.
+     */
+    Slice<SearchHit> searchContent(String spaceKey, String cql, int start);
 
     Slice<PageSummary> listPages(String spaceKey, int start);
 
