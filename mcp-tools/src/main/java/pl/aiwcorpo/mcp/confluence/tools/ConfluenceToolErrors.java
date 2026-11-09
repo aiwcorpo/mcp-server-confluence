@@ -2,6 +2,7 @@ package pl.aiwcorpo.mcp.confluence.tools;
 
 import java.util.Optional;
 import org.springframework.stereotype.Component;
+import pl.aiwcorpo.mcp.confluence.core.domain.DiffBusyException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageConflictException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotEditableException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
@@ -32,6 +33,10 @@ public class ConfluenceToolErrors implements ToolErrorMapping {
         if (ex instanceof PageNotEditableException) {
             return Optional.of(new SafeError(ToolErrorCode.INVALID_ARGUMENT.code(),
                     "The page has formatting that replacing its text would remove. Use mode append, or edit it in Confluence."));
+        }
+        if (ex instanceof DiffBusyException) {
+            return Optional.of(new SafeError(ToolErrorCode.RATE_LIMITED.code(),
+                    "Too many page diffs are being computed. Try again in a moment."));
         }
         if (ex instanceof WritesNotVerifiedException) {
             return Optional.of(new SafeError(ToolErrorCode.UPSTREAM_UNAVAILABLE.code(),

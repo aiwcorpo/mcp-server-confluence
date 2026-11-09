@@ -6,6 +6,7 @@ import java.util.Optional;
 import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
 import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
+import pl.aiwcorpo.mcp.confluence.core.domain.DiffBusyException;
 import pl.aiwcorpo.mcp.confluence.core.domain.ContentHit;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewComment;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
@@ -43,6 +44,9 @@ public class ConfluenceService implements ConfluenceUseCase {
     /** Longest text, in lines, that is compared; longer bodies are reported instead of diffed. */
     static final int DIFF_MAX_LINES = 2_000;
 
+    /** Diffs computed at the same time; each holds a table of up to 2 MB, so this bounds the memory they take. */
+    static final int MAX_PARALLEL_DIFFS = 4;
+
     /** Size of the diff handed to the model, in characters. */
     static final int DIFF_TEXT_MAX = 50_000;
 
@@ -51,6 +55,7 @@ public class ConfluenceService implements ConfluenceUseCase {
 
     private final ConfluenceResourcePort resource;
     private final BackendFeatures features;
+    final java.util.concurrent.Semaphore diffSlots = new java.util.concurrent.Semaphore(MAX_PARALLEL_DIFFS);
 
     public ConfluenceService(ConfluenceResourcePort resource, BackendFeatures features) {
         this.resource = resource;
@@ -172,12 +177,17 @@ public class ConfluenceService implements ConfluenceUseCase {
             omitted.add("diff_too_large");
             return Optional.of(new VersionDiff(fromVersion, toVersion, "", false, false, omitted));
         }
+        if (!diffSlots.tryAcquire()) {
+            throw new DiffBusyException();
+        }
         String diff;
         try {
             diff = TextDiff.unified(before, after, "version " + fromVersion, "version " + toVersion);
         } catch (TextDiff.TooLargeException tooLarge) {
             omitted.add("diff_too_large");
             return Optional.of(new VersionDiff(fromVersion, toVersion, "", false, false, omitted));
+        } finally {
+            diffSlots.release();
         }
         boolean cut = diff.length() > DIFF_TEXT_MAX;
         return Optional.of(new VersionDiff(fromVersion, toVersion, cut ? diff.substring(0, DIFF_TEXT_MAX) : diff,

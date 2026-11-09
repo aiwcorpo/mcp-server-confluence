@@ -117,13 +117,15 @@ public final class ToolResults {
         }
     }
 
-    /** Names of the users and groups an operation is restricted to; empty lists mean it is not restricted on this page. */
-    public record RestrictedTo(List<UntrustedText> users, List<UntrustedText> groups, boolean truncated) {
+    /** Names of the users and groups an operation is restricted to; empty lists mean it is not restricted on this page,
+     * unless {@code omitted} holds restrictions_not_reported: Confluence did not say, so the state is unknown. */
+    public record RestrictedTo(List<UntrustedText> users, List<UntrustedText> groups, boolean truncated,
+                               List<String> omitted) {
 
         static RestrictedTo of(PageRestrictions.Subjects subjects) {
             return new RestrictedTo(subjects.users().stream().map(name -> UntrustedText.plain(name, TITLE_MAX)).toList(),
                     subjects.groups().stream().map(name -> UntrustedText.plain(name, TITLE_MAX)).toList(),
-                    subjects.truncated());
+                    subjects.truncated(), subjects.reported() ? List.of() : List.of("restrictions_not_reported"));
         }
     }
 

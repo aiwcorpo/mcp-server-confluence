@@ -13,6 +13,7 @@ import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.ContentHit;
+import pl.aiwcorpo.mcp.confluence.core.domain.DiffBusyException;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewComment;
 import pl.aiwcorpo.mcp.confluence.core.domain.NewPage;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
@@ -236,6 +237,20 @@ class ConfluenceServiceTest {
 
         assertThat(diff.diff()).isEmpty();
         assertThat(diff.omitted()).containsExactly("body_truncated", "diff_too_large");
+    }
+
+    @Test
+    void diffsBeyondTheParallelLimitAreRefusedAsBusyAndTheSlotIsReleased() {
+        calls.put("findPageVersion", args -> Optional.of(new Page("10", "ENG", "Page 10", (int) args[1], null, List.of(),
+                new PageText("v" + args[1], List.of(), false))));
+        PageRecord current = new PageRecord("10", "ENG", "Page 10", 5, null, List.of(), List.of());
+        service.diffSlots.drainPermits();
+
+        assertThatThrownBy(() -> service.diffPageVersions(current, 1, 2)).isInstanceOf(DiffBusyException.class);
+
+        service.diffSlots.release(ConfluenceService.MAX_PARALLEL_DIFFS);
+        assertThat(service.diffPageVersions(current, 1, 2).orElseThrow().diff()).contains("-v1", "+v2");
+        assertThat(service.diffSlots.availablePermits()).isEqualTo(ConfluenceService.MAX_PARALLEL_DIFFS);
     }
 
     @Test

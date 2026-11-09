@@ -405,8 +405,8 @@ public class ConfluencePageTools {
 
     @Tool(name = "get_page_restrictions", description = "Returns who the view (read) and the edit (update) of a "
             + "Confluence page are restricted to on that page: user display names and group names, at most 100 of each "
-            + "per operation (truncated is true when there are more). Empty lists mean no restriction on this page; "
-            + "restrictions of its ancestor pages also apply and are not included. E-mail addresses are not returned.")
+            + "per operation (truncated is true when there are more). Empty lists mean no restriction on this page, unless "
+            + "omitted holds restrictions_not_reported, which means Confluence did not say; restrictions of its ancestor pages also apply and are not included. E-mail addresses are not returned.")
     @ToolRisk(RiskLevel.READ_ONLY)
     @ToolTitle("Get page restrictions")
     public RestrictionsResult getPageRestrictions(

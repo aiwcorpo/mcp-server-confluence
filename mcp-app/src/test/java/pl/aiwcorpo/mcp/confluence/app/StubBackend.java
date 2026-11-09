@@ -355,7 +355,7 @@ final class StubBackend {
     /**
      * Restrictions by operation as Confluence 8/9 answers them with {@code expand=restrictions.user,restrictions.group}:
      * user entries carry the user key, user name and an e-mail address, which the server must not pass on. Page 1000:
-     * read restricted to one user and one group, update to one user; 1700: update restricted to 100 groups (the list
+     * read restricted to one user and one group, update to one user; 1730 and 1720: the answer carries no expanded restrictions (1720 for read only); 1700: update restricted to 100 groups (the list
      * stops at its limit); other pages have no restrictions.
      */
     private void restrictions(HttpExchange exchange, String pageId, Map<String, String> query) throws IOException {
@@ -377,6 +377,13 @@ final class StubBackend {
                 groups.addObject().put("type", "group").put("name", "group-" + i);
             }
             subjects(update, "group").put("size", 100).put("limit", 100);
+        }
+        if ("1730".equals(pageId) || "1720".equals(pageId)) {
+            // The restrictions were not expanded in the answer: nothing is said about who may do what.
+            read.remove("restrictions");
+            if ("1730".equals(pageId)) {
+                update.remove("restrictions");
+            }
         }
         response.putObject("_links").put("self", baseUrl() + "/rest/api/content/" + pageId + "/restriction/byOperation");
         respond(exchange, 200, response.toString());

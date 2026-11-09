@@ -67,6 +67,21 @@ class TextDiffTest {
     }
 
     @Test
+    void theTableIsBoundedAtAMillionCells() {
+        List<String> left = new ArrayList<>();
+        List<String> right = new ArrayList<>();
+        for (int i = 0; i < 1_100; i++) {
+            left.add("l" + i);
+            right.add("r" + i);
+        }
+        assertThatThrownBy(() -> TextDiff.unified(left, right, "a", "b")).isInstanceOf(TextDiff.TooLargeException.class);
+
+        List<String> within = left.subList(0, 990);
+        List<String> other = right.subList(0, 990);
+        assertThat(TextDiff.unified(within, other, "a", "b")).contains("-l0", "+r989");
+    }
+
+    @Test
     void aChangeTooLargeToCompareIsRefused() {
         List<String> left = new ArrayList<>();
         List<String> right = new ArrayList<>();

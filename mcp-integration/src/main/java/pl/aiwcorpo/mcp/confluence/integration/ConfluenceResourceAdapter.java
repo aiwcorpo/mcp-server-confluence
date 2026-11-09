@@ -426,18 +426,20 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
 
     private static PageRestrictions.Subjects subjects(OperationRestrictionsResponse operation) {
         if (operation == null || operation.restrictions() == null) {
-            return PageRestrictions.Subjects.none();
+            return PageRestrictions.Subjects.notReported();
         }
         SubjectListResponse<UserEntryResponse> users = operation.restrictions().user();
         SubjectListResponse<GroupEntryResponse> groups = operation.restrictions().group();
-        List<String> userNames = users == null || users.results() == null ? List.of()
-                : users.results().stream().map(UserEntryResponse::displayName).filter(Objects::nonNull)
+        // An unexpanded list is absent or has no results array; that is "not reported", never "nobody".
+        if (users == null || users.results() == null || groups == null || groups.results() == null) {
+            return PageRestrictions.Subjects.notReported();
+        }
+        List<String> userNames = users.results().stream().map(UserEntryResponse::displayName).filter(Objects::nonNull)
                         .limit(RESTRICTION_LIST_LIMIT).toList();
-        List<String> groupNames = groups == null || groups.results() == null ? List.of()
-                : groups.results().stream().map(GroupEntryResponse::name).filter(Objects::nonNull)
+        List<String> groupNames = groups.results().stream().map(GroupEntryResponse::name).filter(Objects::nonNull)
                         .limit(RESTRICTION_LIST_LIMIT).toList();
-        boolean cut = (users != null && users.mayHaveMore(userNames.size())) || (groups != null && groups.mayHaveMore(groupNames.size()));
-        return new PageRestrictions.Subjects(userNames, groupNames, cut);
+        boolean cut = users.mayHaveMore(userNames.size()) || groups.mayHaveMore(groupNames.size());
+        return new PageRestrictions.Subjects(userNames, groupNames, cut, true);
     }
 
     @Override

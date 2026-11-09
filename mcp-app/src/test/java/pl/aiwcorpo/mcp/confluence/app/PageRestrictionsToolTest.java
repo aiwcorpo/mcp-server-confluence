@@ -35,6 +35,7 @@ class PageRestrictionsToolTest extends ServerTestSupport {
             assertThat(restrictions.get("update").get("users")).extracting(user -> user.get("text").asString()).containsExactly("Jan Kowalski");
             assertThat(restrictions.get("update").get("groups")).isEmpty();
             assertThat(restrictions.get("read").get("truncated").asBoolean()).isFalse();
+            assertThat(restrictions.get("read").get("omitted")).isEmpty();
             assertThat(text(result)).doesNotContain("corp.invalid", "anowak", "jkowalski", "8a7f808a", "email", "userKey");
         }
         assertThat(BACKEND.requests().stream().filter(r -> r.path().endsWith("/restriction/byOperation")).findFirst().orElseThrow())
@@ -51,6 +52,19 @@ class PageRestrictionsToolTest extends ServerTestSupport {
 
             assertThat(restrictions.get("read").get("users")).isEmpty();
             assertThat(restrictions.get("update").get("groups")).isEmpty();
+        }
+    }
+
+    @Test
+    void anAnswerWithoutExpandedRestrictionsIsUnknownNotEmpty() {
+        try (McpSyncClient client = clientWithCredential(PAT)) {
+            JsonNode none = JSON.readTree(text(call(client, "get_page_restrictions", Map.of("pageId", "1730"))));
+            assertThat(none.get("read").get("omitted")).extracting(JsonNode::asString).containsExactly("restrictions_not_reported");
+            assertThat(none.get("update").get("omitted")).extracting(JsonNode::asString).containsExactly("restrictions_not_reported");
+
+            JsonNode partial = JSON.readTree(text(call(client, "get_page_restrictions", Map.of("pageId", "1720"))));
+            assertThat(partial.get("read").get("omitted")).extracting(JsonNode::asString).containsExactly("restrictions_not_reported");
+            assertThat(partial.get("update").get("omitted")).as("this operation was reported, as empty").isEmpty();
         }
     }
 

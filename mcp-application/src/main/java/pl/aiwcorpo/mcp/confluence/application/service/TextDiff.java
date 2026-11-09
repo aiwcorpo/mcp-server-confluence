@@ -6,13 +6,14 @@ import java.util.List;
 
 /**
  * Unified line diff on a longest-common-subsequence table. The JDK has no diff and Confluence Data Center has no diff
- * endpoint; the table is quadratic, so the caller bounds the number of lines and {@link #unified} refuses a comparison
- * whose table would exceed {@link #MAX_CELLS}.
+ * endpoint; the table is quadratic, so the caller bounds the number of lines and the number of diffs running at once,
+ * and {@link #unified} refuses a comparison whose table would exceed {@link #MAX_CELLS} (2 MB: a cell is a short, which
+ * holds any common length below that bound).
  */
 final class TextDiff {
 
     static final int CONTEXT = 3;
-    static final long MAX_CELLS = 4_000_000L;
+    static final long MAX_CELLS = 1_000_000L;
 
     private TextDiff() {
     }
@@ -61,11 +62,11 @@ final class TextDiff {
     private static List<String> edits(List<String> a, List<String> b) {
         int n = a.size();
         int m = b.size();
-        int[][] common = new int[n + 1][m + 1];
+        short[][] common = new short[n + 1][m + 1];
         for (int i = n - 1; i >= 0; i--) {
             for (int j = m - 1; j >= 0; j--) {
-                common[i][j] = a.get(i).equals(b.get(j)) ? common[i + 1][j + 1] + 1
-                        : Math.max(common[i + 1][j], common[i][j + 1]);
+                common[i][j] = a.get(i).equals(b.get(j)) ? (short) (common[i + 1][j + 1] + 1)
+                        : (short) Math.max(common[i + 1][j], common[i][j + 1]);
             }
         }
         List<String> script = new ArrayList<>();

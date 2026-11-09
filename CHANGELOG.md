@@ -15,8 +15,8 @@ Major release: the policies of the server live in this repository. Built on `mcp
   comparing the fingerprint from the log).
   `MCP_CURSOR_KEY` is now `MCP_PAGING_CURSOR_KEY`, the name the starter reads.
 - New tools `list_page_versions` (author, time and comment of each stored version, newest first, 20 per call) and `diff_page_versions` (unified line
-  diff of the plain text of two versions, computed in the server, capped at 2000 lines per body and 50000 characters of diff). Both read the page under
-  the same policy as `get_page`.
+  diff of the plain text of two versions, computed in the server, capped at 2000 lines per body and 50000 characters of diff; at most 4 diffs run at once and
+  a fifth call is `rate_limited`). Both read the page under the same policy as `get_page`.
 - New tool `search_content`: CQL written by the caller, confined to one space the policy allows (the condition is scanned, wrapped in parentheses and
   followed by the server's `space in (...) AND type = page`), at most 500 characters, paged with the signed cursor, with an excerpt as untrusted
   text. Hits are looked up by id and judged by the space they are in now and by the policy, like those of `search_pages`.
@@ -24,7 +24,8 @@ Major release: the policies of the server live in this repository. Built on `mcp
   and `maxDepth` levels (default 5, at most 10), with `truncated` and the codes `page_limit` and `depth_limit` in `omitted`. Every page is judged by
   the policy; the parent id of a page that is not shown is not returned.
 - New tool `get_page_restrictions`: the users (display names) and groups the view and the edit of a page are restricted to on that page, at most 100
-  of each per operation; no e-mail address, user name or user key is read from Confluence's answer.
+  of each per operation; no e-mail address, user name or user key is read from Confluence's answer. An answer without the expanded lists is reported as
+  `restrictions_not_reported` for that operation, never as an empty list.
 - New tools `reply_to_comment` (a reply under a comment of the same page, same rules as `add_comment`) and `move_page` (a page and its subtree under another
   parent of the same space; the policy judges the page, the new parent and the place the page leaves, and a page already under that parent is not written
   again). `resolve_comment` and cross-space moves are not offered: the documented Data Center REST API has no endpoint for either.

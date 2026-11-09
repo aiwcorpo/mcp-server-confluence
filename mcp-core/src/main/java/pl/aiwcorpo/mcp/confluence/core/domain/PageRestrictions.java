@@ -13,16 +13,18 @@ public record PageRestrictions(Subjects read, Subjects update) {
      * @param users     display names of the users the operation is restricted to
      * @param groups    names of the groups the operation is restricted to
      * @param truncated Confluence listed fewer names than there are, or the list was cut at the server's limit
+     * @param reported  false when Confluence's answer has no restriction lists for this operation; the lists are then
+     *                  empty because nothing is known, not because nothing is restricted
      */
-    public record Subjects(List<String> users, List<String> groups, boolean truncated) {
+    public record Subjects(List<String> users, List<String> groups, boolean truncated, boolean reported) {
 
         public Subjects {
             users = List.copyOf(users);
             groups = List.copyOf(groups);
         }
 
-        public static Subjects none() {
-            return new Subjects(List.of(), List.of(), false);
+        public static Subjects notReported() {
+            return new Subjects(List.of(), List.of(), false, false);
         }
     }
 }
