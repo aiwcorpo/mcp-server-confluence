@@ -35,7 +35,8 @@ class ManifestTest extends ServerTestSupport {
             Map.entry("list_attachments", "READ_ONLY"), Map.entry("read_attachment", "READ_ONLY"),
             Map.entry("search_content", "READ_ONLY"), Map.entry("get_space_page_tree", "READ_ONLY"), Map.entry("get_page_restrictions", "READ_ONLY"), Map.entry("list_page_versions", "READ_ONLY"), Map.entry("diff_page_versions", "READ_ONLY"),
             Map.entry("create_page", "UPDATE"), Map.entry("update_page", "UPDATE"),
-            Map.entry("add_comment", "UPDATE"), Map.entry("add_label", "UPDATE"),
+            Map.entry("add_comment", "UPDATE"),
+            Map.entry("reply_to_comment", "UPDATE"), Map.entry("move_page", "UPDATE"), Map.entry("add_label", "UPDATE"),
             Map.entry("delete_page", "DESTRUCTIVE"));
 
     static final Map<String, String> REFS = Map.ofEntries(
@@ -49,6 +50,8 @@ class ManifestTest extends ServerTestSupport {
             Map.entry("get_page_restrictions", "pageId:Confluence::Page"), Map.entry("list_page_versions", "pageId:Confluence::Page"), Map.entry("diff_page_versions", "pageId:Confluence::Page"),
             Map.entry("create_page", "parentId:Confluence::Page,space:Confluence::Space"),
             Map.entry("update_page", "pageId:Confluence::Page"), Map.entry("add_comment", "pageId:Confluence::Page"),
+            Map.entry("reply_to_comment", "pageId:Confluence::Page"),
+            Map.entry("move_page", "pageId:Confluence::Page,targetParentId:Confluence::Page"),
             Map.entry("add_label", "pageId:Confluence::Page"), Map.entry("delete_page", "pageId:Confluence::Page"));
 
     static final Map<String, String> TITLES = Map.ofEntries(
@@ -61,7 +64,8 @@ class ManifestTest extends ServerTestSupport {
             Map.entry("search_content", "Search content with CQL"), Map.entry("get_space_page_tree", "Get space page tree"),
             Map.entry("get_page_restrictions", "Get page restrictions"), Map.entry("list_page_versions", "List page versions"), Map.entry("diff_page_versions", "Diff page versions"),
             Map.entry("create_page", "Create page"), Map.entry("update_page", "Update page"),
-            Map.entry("add_comment", "Add comment"), Map.entry("add_label", "Add label"),
+            Map.entry("add_comment", "Add comment"),
+            Map.entry("reply_to_comment", "Reply to comment"), Map.entry("move_page", "Move page"), Map.entry("add_label", "Add label"),
             Map.entry("delete_page", "Delete page"));
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build();
 

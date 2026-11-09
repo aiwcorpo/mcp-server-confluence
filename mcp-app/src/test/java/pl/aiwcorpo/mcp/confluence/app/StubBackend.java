@@ -544,8 +544,19 @@ final class StubBackend {
                     + fixture.version()));
             return;
         }
+        List<String> placed = fixture.ancestors();
+        if (request.path("ancestors").isArray() && request.path("ancestors").size() > 0) {
+            // Naming a parent moves the page; "Stray" (1711) is put somewhere else than asked, as a confused backend would.
+            String parent = request.path("ancestors").path(0).path("id").asString();
+            Fixture parentPage = FIXTURES.get(parent);
+            placed = new java.util.ArrayList<>(parentPage == null ? List.of() : parentPage.ancestors());
+            placed.add(parent);
+            if ("1711".equals(id)) {
+                placed = List.of("9999");
+            }
+        }
         respond(exchange, 200, content(new Fixture(id, "page", fixture.space(), request.path("title").asString(),
-                fixture.version() + 1, fixture.ancestors(),
+                fixture.version() + 1, placed,
                 request.path("body").path("storage").path("value").asString(), null),
                 List.of("space", "version", "ancestors")));
     }
@@ -818,7 +829,11 @@ final class StubBackend {
                 new Fixture("4002", "page", "OPS", "Operations home", 2, List.of(), "<p>Operations.</p>", null),
                 new Fixture("4004", "page", "FULL", "Full label page", 1, List.of(), "<p>full</p>", null),
                 new Fixture("1700", "page", "ENG", "Contended", 5, List.of("1000"), "<p>Edited by two people.</p>", null),
-                new Fixture("4003", "page", "MANY", "Many labels", 1, List.of(), "<p>unclear</p>", null))) {
+                new Fixture("4003", "page", "MANY", "Many labels", 1, List.of(), "<p>unclear</p>", null),
+                new Fixture("1710", "page", "ENG", "Draft", 1, List.of("1000"), "<p>Draft text.</p>", null),
+                new Fixture("1711", "page", "ENG", "Stray", 1, List.of("1000"), "<p>Stray text.</p>", null),
+                new Fixture("1720", "page", "ENG", "Deep", 2, List.of("1000", "1001"), "<p>Deep text.</p>", null),
+                new Fixture("1730", "page", "ENG", "Second root", 1, List.of(), "<p>Second root text.</p>", null))) {
             fixtures.put(fixture.id(), fixture);
         }
         for (int i = 0; i < 40; i++) {

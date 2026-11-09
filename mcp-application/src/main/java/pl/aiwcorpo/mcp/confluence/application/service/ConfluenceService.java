@@ -267,6 +267,24 @@ public class ConfluenceService implements ConfluenceUseCase {
         resource.addLabel(page.id(), label);
     }
 
+    /**
+     * Both records are what the policy judged. The page is moved only inside its own space, and a page that already has
+     * {@code target} as its parent is not written again, so a repeated call after a lost answer changes nothing.
+     */
+    @Override
+    public PageSummary movePage(PageRecord judged, PageRecord target) {
+        requireWrites();
+        if (!judged.spaceKey().equalsIgnoreCase(target.spaceKey())) {
+            throw new PageNotFoundException();
+        }
+        if (!judged.ancestorIds().isEmpty() && judged.ancestorIds().getLast().equals(target.id())) {
+            resource.findPageRecord(judged.id()).filter(page -> samePlace(judged, page.spaceKey(), page.ancestorIds()))
+                    .orElseThrow(PageNotFoundException::new);
+            return judged.summary();
+        }
+        return resource.movePage(judged, target);
+    }
+
     @Override
     public void trashPage(PageRecord judged) {
         requireWrites();

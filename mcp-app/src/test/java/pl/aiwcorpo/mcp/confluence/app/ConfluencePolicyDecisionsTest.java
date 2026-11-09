@@ -131,6 +131,19 @@ class ConfluencePolicyDecisionsTest {
     }
 
     @Test
+    void aMoveTouchesThePageTheOldParentAndTheNewParentAndEachNeedsAGrant() {
+        Caller subtree = PolicyDecisions.caller(READ, WRITE, "mcp-confluence-release");
+        PolicyDecisions mapped = PolicyDecisions.fromResources().scopeMapping(Map.of(
+                "mcp-confluence-release", List.of("Confluence::Page/1001", "Confluence::Page/1700")));
+
+        mapped.assertAllowed(subtree, "update", page("1720", "ENG", List.of("1000", "1001")));
+        mapped.assertAllowed(subtree, "update", page("1001", "ENG", List.of("1000")));
+        mapped.assertAllowed(subtree, "update", page("1700", "ENG", List.of("1000")));
+        mapped.assertDenied(subtree, "update", page("1000", "ENG", List.of()));
+        mapped.assertDenied(subtree, "update", space("ENG", List.of()));
+    }
+
+    @Test
     void aPageIsDeletedInTheScopeWithTheDestructiveGroup() {
         Decision decision = policies.decide(PolicyDecisions.caller(READ, DESTRUCTIVE, ENG), "delete", page("501", "ENG", List.of()));
 

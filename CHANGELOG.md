@@ -25,6 +25,9 @@ Major release: the policies of the server live in this repository. Built on `mcp
   the policy; the parent id of a page that is not shown is not returned.
 - New tool `get_page_restrictions`: the users (display names) and groups the view and the edit of a page are restricted to on that page, at most 100
   of each per operation; no e-mail address, user name or user key is read from Confluence's answer.
+- New tools `reply_to_comment` (a reply under a comment of the same page, same rules as `add_comment`) and `move_page` (a page and its subtree under another
+  parent of the same space; the policy judges the page, the new parent and the place the page leaves, and a page already under that parent is not written
+  again). `resolve_comment` and cross-space moves are not offered: the documented Data Center REST API has no endpoint for either.
 - Cedar policies in `mcp-app/src/main/resources/mcp/policies/` (schema in the namespace `Confluence`, `resource-types.json`,
   `read.cedar`, `update.cedar`), carried in the manifest with `policiesHash`. They replace `policies/confluence/` of the `mcp-policies`
   repository; the rules are the same, except what the platform now generates for every server: the call rules by group, the forbid

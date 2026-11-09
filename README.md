@@ -31,12 +31,12 @@ state is in the log (`backend capability: probe=confluence state=...`), in the m
 
 ## Tools
 
-22 tools: 17 `READ_ONLY`, 4 `UPDATE` and 1 `DESTRUCTIVE` (`delete_page`, which needs the confirmation code the gateway checks).
+24 tools: 17 `READ_ONLY`, 6 `UPDATE` and 1 `DESTRUCTIVE` (`delete_page`, which needs the confirmation code the gateway checks).
 A client sees them as `confluence__<name>`. The generated table with each tool's title, risk, action and required group is in
 `docs/reference/tools.md` of the `mcp-docs` repository (link below). It is not repeated here.
 
 Reads cover search, pages, child pages, the page tree of a space (`get_space_page_tree`: at most 200 pages and 10 levels, with `truncated` and `omitted` when it stops short), spaces, page restrictions (`get_page_restrictions`: who the view and the edit are restricted to on the page, by display name and group name, never an e-mail address), page versions (a stored version, the version history and a line diff of two versions), comments, labels and text attachments. `diff_page_versions` computes the diff in the server from the plain text of both versions, because Confluence Data Center has no diff endpoint; `list_page_versions` asks for the version numbers one by one (20 per call), because the public REST API has no version list. Writes create and
-update pages (`update_page` takes `expectedVersion` and refuses a stale one), add comments and labels. `search_pages` builds its query in the server from structured arguments. `search_content` is the one tool that takes
+update pages (`update_page` takes `expectedVersion` and refuses a stale one), add comments and replies to comments, add labels and move a page under another parent of the same space (`move_page`). A move is judged on three places: the page, the new parent and the place the page leaves (its current parent page, or the space for a top-level page), each with the write scope, so a grant on a page tree does not let a page out of that tree. The documented REST API has no cross-space move and no endpoint to resolve an inline comment, so the server has no tool for either. `search_pages` builds its query in the server from structured arguments. `search_content` is the one tool that takes
 CQL from the caller: it needs a `space` the policy allows, the condition (at most 500 characters) is scanned and wrapped in
 parentheses, and the server ANDs `space in (...)` and `type = page` outside it, so a condition cannot reach another space or other
 content. Every hit is then looked up by id and kept only if Confluence puts the page in that space now and the policy allows it. It
@@ -106,7 +106,7 @@ self-signed one into `MCP_STATE_DIR`, and `MCP_PLAIN_HTTP=true` means no TLS ins
 stack. The full list with defaults is in `docs/reference/env-servers.md` of `mcp-docs`.
 
 A PAT has no scopes and inherits every right of the account. The account needs View on the spaces it reads, Add/Edit pages for
-`create_page`, `update_page` and `add_label`, Add comments for `add_comment` and Delete pages for `delete_page`. Use one account per
+`create_page`, `update_page`, `move_page` and `add_label`, Add comments for `add_comment` and `reply_to_comment` and Delete pages for `delete_page`. Use one account per
 person. The platform policy can only narrow what the account is allowed to do.
 
 ## Documentation

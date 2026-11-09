@@ -35,12 +35,15 @@ class SpacePageTreeToolTest extends ServerTestSupport {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             JsonNode tree = json(call(client, "get_space_page_tree", Map.of("space", "ENG")));
 
-            assertThat(tree.get("items")).extracting(i -> i.get("id").asString()).startsWith("1000", "1001", "1700")
+            assertThat(tree.get("items")).extracting(i -> i.get("id").asString()).startsWith("1000", "1001", "1720", "1700")
                     .as("the blog post of the space is not a page").doesNotContain("1002");
             assertThat(item(tree, "1000").get("parentId").isNull()).isTrue();
             assertThat(item(tree, "1000").get("depth").asInt()).isZero();
             assertThat(item(tree, "1001").get("parentId").asString()).isEqualTo("1000");
             assertThat(item(tree, "1001").get("depth").asInt()).isEqualTo(1);
+            assertThat(item(tree, "1720").get("parentId").asString()).isEqualTo("1001");
+            assertThat(item(tree, "1720").get("depth").asInt()).isEqualTo(2);
+            assertThat(item(tree, "1730").get("parentId").isNull()).isTrue();
             assertThat(item(tree, "1001").get("title").get("kind").asString()).isEqualTo("untrusted-data");
             assertThat(tree.get("truncated").asBoolean()).isFalse();
             assertThat(tree.get("omitted")).isEmpty();
@@ -57,7 +60,7 @@ class SpacePageTreeToolTest extends ServerTestSupport {
         try (McpSyncClient client = clientWithCredential(PAT)) {
             JsonNode tree = json(call(client, "get_space_page_tree", Map.of("space", "ENG", "maxDepth", 1)));
 
-            assertThat(tree.get("items")).extracting(i -> i.get("id").asString()).containsExactly("1000");
+            assertThat(tree.get("items")).extracting(i -> i.get("id").asString()).containsExactly("1000", "1730");
             assertThat(tree.get("truncated").asBoolean()).isTrue();
             assertThat(tree.get("omitted")).extracting(JsonNode::asString).containsExactly("depth_limit");
         }

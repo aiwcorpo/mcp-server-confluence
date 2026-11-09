@@ -43,6 +43,12 @@ abstract class ServerTestSupport {
     static final String ENG_SPACE_GROUP = "mcp-confluence-space-ENG";
     /** Mapped to the page tree {@code Confluence::Page/1000} in the policy data of {@link #GATEWAY}. */
     static final String HANDBOOK_EDITORS_GROUP = "mcp-confluence-handbook-editors";
+    /** Mapped to the scope {@code Confluence::Space/OPS}. */
+    static final String OPS_SPACE_GROUP = "mcp-confluence-space-OPS";
+    /** Mapped to the page tree {@code Confluence::Page/1001}. */
+    static final String RELEASE_EDITORS_GROUP = "mcp-confluence-release-editors";
+    /** Mapped to the page tree {@code Confluence::Page/1700}. */
+    static final String CONTENDED_EDITORS_GROUP = "mcp-confluence-contended-editors";
     /** Mapped to the scope {@code Confluence::Space/HR}, a space labelled restricted: a grant never opens it. */
     static final String HR_SPACE_GROUP = "mcp-confluence-space-HR";
 
@@ -52,7 +58,10 @@ abstract class ServerTestSupport {
         GATEWAY.policyData().scopeMapping(Map.of(
                 "mcp-confluence-space-ENG", List.of("Confluence::Space/ENG"),
                 "mcp-confluence-handbook-editors", List.of("Confluence::Page/1000"),
-                "mcp-confluence-space-HR", List.of("Confluence::Space/HR")));
+                "mcp-confluence-space-HR", List.of("Confluence::Space/HR"),
+                "mcp-confluence-space-OPS", List.of("Confluence::Space/OPS"),
+                "mcp-confluence-release-editors", List.of("Confluence::Page/1001"),
+                "mcp-confluence-contended-editors", List.of("Confluence::Page/1700")));
     }
 
     static final StubBackend BACKEND = StubBackend.start();

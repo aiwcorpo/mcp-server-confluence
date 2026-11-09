@@ -27,6 +27,7 @@ import pl.aiwcorpo.mcp.confluence.tools.ToolResults.CommentItem;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.ContentSearchHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.DiffResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.LabelsResult;
+import pl.aiwcorpo.mcp.confluence.tools.ToolResults.MovedPage;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.RestrictionsResult;
@@ -553,6 +554,58 @@ public class ConfluencePageTools {
         return new AddedComment(useCase.addComment(page, parentCommentId, text).id(), page.id());
     }
 
+    @Tool(name = "reply_to_comment", description = "Adds a reply to an existing comment of a Confluence page. The "
+            + "comment has to belong to that page. The text is plain text, escaped. A repeated call adds the reply again.")
+    @ToolRisk(RiskLevel.UPDATE)
+    @ToolTitle("Reply to comment")
+    public AddedComment replyToComment(
+            @ToolParam(description = "Page id, a positive decimal number")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
+            @ToolParam(description = "Id of the comment to reply to, from list_comments")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, pattern = ConfluenceIds.PAGE_ID) String commentId,
+            @ToolParam(description = "Reply text, at most 10000 characters")
+            @ArgumentLimits(minLength = 1, maxLength = COMMENT_MAX, pattern = Arguments.MULTI_LINE) String body) {
+        String text = Arguments.require("body", body, 1, COMMENT_MAX, Arguments.MULTI_LINE,
+                "1-10000 characters without control characters other than tab and line breaks");
+        if (!ConfluenceIds.isPageId(commentId)) {
+            throw new InvalidToolArgumentException("commentId must be a positive decimal number");
+        }
+        PageRecord page = judgedPage(pageId);
+        return new AddedComment(useCase.addComment(page, commentId, text).id(), page.id());
+    }
+
+    /**
+     * The policy judges the page and the new parent with the action {@code update} (both are {@code @ResourceRef}).
+     * What the policy cannot see is the place the page leaves: that is the old parent page, or the space for a top-level
+     * page, and the caller needs the update right there too, so a grant on a subtree does not let a page out of it.
+     */
+    @Tool(name = "move_page", description = "Moves a Confluence page, with its child pages, under another page of the "
+            + "same space. Moving to another space is not supported. A page cannot be moved under itself or one of its "
+            + "own descendants. A page that is already under that parent is left as it is. The caller needs the "
+            + "write grant on the page, on its current parent (on the space for a top-level page) and on the new "
+            + "parent. Returns id, space key, title, new version and the id of the new parent.")
+    @ToolRisk(RiskLevel.UPDATE)
+    @ToolTitle("Move page")
+    public MovedPage movePage(
+            @ToolParam(description = "Id of the page to move, a positive decimal number")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
+            @ToolParam(description = "Id of the new parent page in the same space, a positive decimal number")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String targetParentId) {
+        PageRecord page = judgedPage(pageId);
+        PageRecord target = judgedPage(targetParentId);
+        if (!page.spaceKey().equalsIgnoreCase(target.spaceKey())) {
+            throw new InvalidToolArgumentException("targetParentId must be a page of the same space as pageId");
+        }
+        if (page.id().equals(target.id()) || target.ancestorIds().contains(page.id())) {
+            throw new InvalidToolArgumentException("a page cannot be moved under itself or one of its descendants");
+        }
+        requireUpdateOnCurrentParent(page);
+        return MovedPage.of(useCase.movePage(page, target), target);
+    }
+
     @Tool(name = "add_label", description = "Adds a global label to a Confluence page. A label the page already has "
             + "is left as it is, so a repeated call changes nothing.")
     @ToolRisk(RiskLevel.UPDATE)
@@ -595,6 +648,17 @@ public class ConfluencePageTools {
     private static Space judgedSpace(String space) {
         return ResourceContext.current().orElseThrow()
                 .fetched(ConfluenceResourceModel.SPACE_TYPE, space, Space.class).orElseThrow();
+    }
+
+    /** The place a page leaves is judged like the place it goes to; a refusal looks like a missing page. */
+    private void requireUpdateOnCurrentParent(PageRecord page) {
+        boolean allowed = page.ancestorIds().isEmpty()
+                ? !policy.retainAllowedById(ConfluenceResourceModel.SPACE_TYPE, List.of(page.spaceKey()), key -> key).isEmpty()
+                : !policy.retainAllowedById(ConfluenceResourceModel.PAGE_TYPE, List.of(page.ancestorIds().getLast()), id -> id)
+                        .isEmpty();
+        if (!allowed) {
+            throw new PageNotFoundException();
+        }
     }
 
     private static String validSpace(String space) {

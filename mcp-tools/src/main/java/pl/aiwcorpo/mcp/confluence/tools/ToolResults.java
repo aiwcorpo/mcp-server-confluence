@@ -6,6 +6,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Attachment;
 import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRestrictions;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
@@ -176,6 +177,13 @@ public final class ToolResults {
         static WrittenPage of(PageSummary page, String requestedSpaceKey) {
             String spaceKey = page.spaceKey() == null ? requestedSpaceKey : page.spaceKey();
             return new WrittenPage(page.id(), spaceKey, titleText(page.title()), page.version());
+        }
+    }
+
+    public record MovedPage(String id, String spaceKey, UntrustedText title, int version, @Nullable String parentId) {
+
+        static MovedPage of(PageSummary page, PageRecord target) {
+            return new MovedPage(page.id(), target.spaceKey(), titleText(page.title()), page.version(), target.id());
         }
     }
 

@@ -113,6 +113,19 @@ public interface ConfluenceResourcePort {
      */
     PageSummary updatePage(PageEdit edit);
 
+    /**
+     * Puts the page under {@code target}, in the same space: Confluence moves a page when an update names a new parent
+     * ({@code ancestors}); the content is sent back unchanged. Cross-space moves are not offered by the REST API.
+     *
+     * @param judged the page as the policy judged it; the stored page is compared with it
+     * @param target the new parent as the policy judged it
+     * @throws pl.aiwcorpo.mcp.confluence.core.domain.PageConflictException    the page was edited in between
+     * @throws pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException    the page is not visible, was moved
+     *         out of the judged place, or the caller may not edit it
+     * @throws pl.aiwcorpo.mcp.confluence.core.domain.PageRejectedException    Confluence refused the move (400)
+     */
+    PageSummary movePage(PageRecord judged, PageRecord target);
+
     /** Moves the page to the trash of its space (Confluence's delete; the page can be restored by a space admin). */
     void trashPage(String pageId);
 }

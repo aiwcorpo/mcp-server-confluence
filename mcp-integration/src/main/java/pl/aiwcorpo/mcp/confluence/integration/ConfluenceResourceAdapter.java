@@ -619,6 +619,41 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @Override
+    public PageSummary movePage(PageRecord judged, PageRecord target) {
+        ContentResponse current = fetch(judged.id(), PAGE_EXPAND).orElseThrow(PageNotFoundException::new);
+        boolean samePlace = judged.spaceKey().equalsIgnoreCase(current.spaceKey())
+                && judged.ancestorIds().equals(current.ancestorIds());
+        if (!samePlace) {
+            throw new PageNotFoundException();
+        }
+        int storedVersion = current.version() == null ? 0 : current.version().number();
+        String existing = current.body() == null || current.body().storage() == null ? ""
+                : current.body().storage().value();
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("type", "page");
+        request.put("title", current.title());
+        request.put("version", Map.of("number", storedVersion + 1));
+        request.put("ancestors", List.of(Map.of("id", target.id())));
+        request.put("body", storageBody(existing));
+        ContentResponse moved = send(() -> putJson(CONTENT + "/{id}", Map.of("id", judged.id()),
+                query("expand", RECORD_EXPAND), request), conflictHiddenOrRejected());
+        moved.withId();
+        requireUnderJudgedParent(moved, judged, target);
+        return moved.toSummary();
+    }
+
+    /** The target was judged before the write; if Confluence put the page elsewhere the result is not usable. */
+    private static void requireUnderJudgedParent(ContentResponse moved, PageRecord judged, PageRecord target) {
+        List<String> expected = new ArrayList<>(target.ancestorIds());
+        expected.add(target.id());
+        boolean spaceMatches = moved.spaceKey() == null || judged.spaceKey().equalsIgnoreCase(moved.spaceKey());
+        if (!spaceMatches || !expected.equals(moved.ancestorIds())) {
+            LOG.warn("event=page_moved_outside_judged_parent pageId={} parentId={}", judged.id(), target.id());
+            throw new BackendResponseException("moved page is not under the judged parent");
+        }
+    }
+
+    @Override
     public void trashPage(String pageId) {
         send(() -> {
             client.delete().uri(uri -> uri.path(CONTENT + "/{id}").build(pageId)).headers(credential()::applyTo)

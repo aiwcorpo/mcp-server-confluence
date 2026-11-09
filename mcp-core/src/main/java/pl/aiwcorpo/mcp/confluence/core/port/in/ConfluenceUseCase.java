@@ -109,5 +109,14 @@ public interface ConfluenceUseCase {
 
     void addLabel(PageRecord page, String label);
 
+    /**
+     * Moves a page under another page of the same space; a page that is already under {@code target} is left as it is.
+     *
+     * @throws pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException when {@code target} is in another space, or
+     *         the page is not where it was judged
+     * @throws pl.aiwcorpo.mcp.confluence.core.domain.WritesNotVerifiedException on a version not enabled for writes
+     */
+    PageSummary movePage(PageRecord judged, PageRecord target);
+
     void trashPage(PageRecord judged);
 }

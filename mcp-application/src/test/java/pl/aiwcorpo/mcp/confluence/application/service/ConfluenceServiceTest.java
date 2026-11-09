@@ -181,6 +181,32 @@ class ConfluenceServiceTest {
     }
 
     @Test
+    void aPageIsMovedOnlyWithinItsSpaceAndNotWrittenWhenItIsAlreadyThere() {
+        List<String> moved = new ArrayList<>();
+        calls.put("movePage", args -> {
+            moved.add(((PageRecord) args[0]).id() + ">" + ((PageRecord) args[1]).id());
+            return summary("10", "ENG");
+        });
+        calls.put("findPageRecord", args -> Optional.of(record("10", "ENG", List.of("1"))));
+
+        service.movePage(record("10", "ENG", List.of("1")), record("2", "ENG", List.of()));
+        PageSummary unchanged = service.movePage(record("10", "ENG", List.of("1")), record("1", "ENG", List.of()));
+        assertThatThrownBy(() -> service.movePage(record("10", "ENG", List.of("1")), record("3", "HR", List.of())))
+                .as("another space").isInstanceOf(PageNotFoundException.class);
+
+        assertThat(moved).containsExactly("10>2");
+        assertThat(unchanged.id()).isEqualTo("10");
+    }
+
+    @Test
+    void aMoveIsRefusedWhenWritesAreNotVerified() {
+        writes = false;
+
+        assertThatThrownBy(() -> service.movePage(record("10", "ENG", List.of("1")), record("2", "ENG", List.of())))
+                .isInstanceOf(WritesNotVerifiedException.class);
+    }
+
+    @Test
     void theHistoryIsReadInWindowsOfTwentyNumbersFromTheNewestAndSkipsWhatIsNotShown() {
         List<String> asked = new ArrayList<>();
         calls.put("findPageVersionInfo", args -> {
