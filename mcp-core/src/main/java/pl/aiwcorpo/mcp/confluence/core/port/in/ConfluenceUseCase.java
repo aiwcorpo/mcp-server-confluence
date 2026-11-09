@@ -9,8 +9,10 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
+import pl.aiwcorpo.mcp.confluence.core.domain.VersionDiff;
 
 /**
  * Inbound port: what the server can do, in business terms. Implemented in mcp-application, called by mcp-tools. Records
@@ -44,6 +46,21 @@ public interface ConfluenceUseCase {
 
     /** A stored version of the page; empty when that version does not exist. */
     Optional<Page> getPageVersion(PageRecord judged, int version);
+
+    /**
+     * Versions of the page, newest first, one window at a time.
+     *
+     * @param start the version number to continue from, or 0 for the newest; {@code nextStart} of the slice is the
+     *              number to pass next
+     */
+    Slice<PageVersion> listPageVersions(PageRecord page, int start);
+
+    /**
+     * Unified line diff between the plain-text bodies of two versions, read the way {@code get_page} reads a body.
+     *
+     * @return empty when one of the versions does not exist
+     */
+    Optional<VersionDiff> diffPageVersions(PageRecord judged, int fromVersion, int toVersion);
 
     Slice<Comment> listComments(PageRecord page, int start);
 

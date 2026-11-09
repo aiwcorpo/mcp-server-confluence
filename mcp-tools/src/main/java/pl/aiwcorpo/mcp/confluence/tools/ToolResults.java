@@ -7,7 +7,9 @@ import pl.aiwcorpo.mcp.confluence.core.domain.AttachmentText;
 import pl.aiwcorpo.mcp.confluence.core.domain.Comment;
 import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
+import pl.aiwcorpo.mcp.confluence.core.domain.VersionDiff;
 import pl.aiwcorpo.mcp.platform.resource.ResourceRef;
 import pl.aiwcorpo.mcp.platform.text.UntrustedText;
 
@@ -21,6 +23,7 @@ public final class ToolResults {
 
     static final int TITLE_MAX = 255;
     static final int MEDIA_TYPE_MAX = 100;
+    static final int VERSION_MESSAGE_MAX = 500;
 
     private ToolResults() {
     }
@@ -69,6 +72,24 @@ public final class ToolResults {
                     comment.created(), comment.location(),
                     UntrustedText.plainCut(comment.body().text(), comment.body().truncated()),
                     comment.body().omittedMacros());
+        }
+    }
+
+    public record VersionItem(int number, UntrustedText author, @Nullable String when, UntrustedText message) {
+
+        static VersionItem of(PageVersion version) {
+            return new VersionItem(version.number(), UntrustedText.plain(version.author(), TITLE_MAX), version.when(),
+                    UntrustedText.plain(version.message(), VERSION_MESSAGE_MAX));
+        }
+    }
+
+    /** {@code omitted} holds fixed codes: body_truncated, diff_too_large. */
+    public record DiffResult(int fromVersion, int toVersion, UntrustedText diff, boolean identical,
+                             List<String> omitted) {
+
+        static DiffResult of(VersionDiff diff) {
+            return new DiffResult(diff.fromVersion(), diff.toVersion(), UntrustedText.plainCut(diff.diff(), diff.truncated()),
+                    diff.identical(), diff.omitted());
         }
     }
 

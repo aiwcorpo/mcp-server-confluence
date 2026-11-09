@@ -14,6 +14,9 @@ Major release: the policies of the server live in this repository. Built on `mcp
   `deploy/README.md` has the new procedure (the author starts the server, the operator enters its address in the portal and approves the connection after
   comparing the fingerprint from the log).
   `MCP_CURSOR_KEY` is now `MCP_PAGING_CURSOR_KEY`, the name the starter reads.
+- New tools `list_page_versions` (author, time and comment of each stored version, newest first, 20 per call) and `diff_page_versions` (unified line
+  diff of the plain text of two versions, computed in the server, capped at 2000 lines per body and 50000 characters of diff). Both read the page under
+  the same policy as `get_page`.
 - Cedar policies in `mcp-app/src/main/resources/mcp/policies/` (schema in the namespace `Confluence`, `resource-types.json`,
   `read.cedar`, `update.cedar`), carried in the manifest with `policiesHash`. They replace `policies/confluence/` of the `mcp-policies`
   repository; the rules are the same, except what the platform now generates for every server: the call rules by group, the forbid

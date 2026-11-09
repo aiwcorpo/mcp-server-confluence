@@ -49,6 +49,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRejectedException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.port.out.ConfluenceResourcePort;
@@ -87,6 +88,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     static final String RECORD_EXPAND = "space,version,ancestors";
     static final String SUMMARY_EXPAND = "space,version";
     static final String SPACE_EXPAND = "metadata.labels";
+    static final String VERSION_EXPAND = "version,space";
     static final String COMMENT_EXPAND = "body.storage,version,ancestors,container,extensions.inlineProperties";
     static final String ATTACHMENT_EXPAND = "version,container";
 
@@ -314,6 +316,24 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
         // A stored version has status "historical"; only the type, the id asked for and the space matter here.
         return Optional.of(response.withId()).filter(content -> pageId.equals(content.id())).filter(ContentResponse::isPage).filter(ContentResponse::isInGlobalSpace)
                 .map(ContentResponse::toPage);
+    }
+
+    @Override
+    public Optional<PageVersion> findPageVersionInfo(String pageId, int version, boolean current) {
+        Map<String, Object> query = current ? query("expand", VERSION_EXPAND)
+                : query("status", "historical", "version", version, "expand", VERSION_EXPAND);
+        ContentResponse response = send(() -> getJson(CONTENT + "/{id}", Map.of("id", pageId), query,
+                ContentResponse.class), hidden(() -> null));
+        if (response == null) {
+            return Optional.empty();
+        }
+        return Optional.of(response.withId()).filter(content -> pageId.equals(content.id()))
+                .filter(ContentResponse::isPage).filter(ContentResponse::isInGlobalSpace)
+                .filter(content -> content.version() != null && content.version().number() == version)
+                .map(content -> new PageVersion(version,
+                        content.version().by() == null || content.version().by().displayName() == null ? ""
+                                : content.version().by().displayName(),
+                        content.version().when(), content.version().message() == null ? "" : content.version().message()));
     }
 
     /**
@@ -891,7 +911,7 @@ public class ConfluenceResourceAdapter implements ConfluenceResourcePort {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record VersionResponse(int number, String when, UserResponse by) {
+    record VersionResponse(int number, String when, UserResponse by, String message) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

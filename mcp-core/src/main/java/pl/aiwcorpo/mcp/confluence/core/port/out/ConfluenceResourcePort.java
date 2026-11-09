@@ -13,6 +13,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.Page;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 
@@ -54,6 +55,13 @@ public interface ConfluenceResourcePort {
 
     /** An earlier version of a page with its body; empty when the version does not exist. */
     Optional<Page> findPageVersion(String pageId, int version);
+
+    /**
+     * Author, time and comment of one stored version, without its body. The public REST API has no version list, so the
+     * caller asks for the numbers one by one. {@code current} says that {@code version} is the page's current one, which
+     * Confluence does not serve as a historical version. Empty when that version does not exist or is not shown.
+     */
+    Optional<PageVersion> findPageVersionInfo(String pageId, int version, boolean current);
 
     Slice<Comment> listComments(String pageId, int start, int limit);
 

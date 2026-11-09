@@ -409,13 +409,24 @@ final class StubBackend {
         }
     }
 
-    /** Stored versions of 1001: 2 exists, the rest do not. */
+    /** Stored versions of 1001: 2 exists, the rest do not. Of 1000: 1, 2 and 4 to 6 exist (3 was pruned), 7 is current. */
     private void historical(HttpExchange exchange, String id, String version, List<String> expand) throws IOException {
         Fixture current = FIXTURES.get(id);
         if ("1700".equals(id) && "1".equals(version)) {
             // A confused backend: the content behind the id is another page.
             respond(exchange, 200, contentNode(new Fixture("1000", "page", "ENG", "Engineering home", 1, List.of(),
                     "<p>other</p>", null), expand).put("status", "historical").toString());
+            return;
+        }
+        if ("1000".equals(id) && version != null && version.matches("[1-6]") && !"3".equals(version)) {
+            int number = Integer.parseInt(version);
+            String text = number == 6 ? "<p>Welcome to engineering.</p><p>Newer line.</p>"
+                    : "<p>Welcome to engineering.</p><p>Old line.</p>";
+            ObjectNode content = contentNode(new Fixture(id, "page", "ENG", "Engineering home", number, List.of(), text, null),
+                    expand);
+            content.put("status", "historical");
+            ((ObjectNode) content.get("version")).put("message", "Edit " + number);
+            respond(exchange, 200, content.toString());
             return;
         }
         if (current == null || !"2".equals(version) || !"1001".equals(id)) {

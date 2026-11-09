@@ -31,11 +31,11 @@ state is in the log (`backend capability: probe=confluence state=...`), in the m
 
 ## Tools
 
-17 tools: 12 `READ_ONLY`, 4 `UPDATE` and 1 `DESTRUCTIVE` (`delete_page`, which needs the confirmation code the gateway checks).
+19 tools: 14 `READ_ONLY`, 4 `UPDATE` and 1 `DESTRUCTIVE` (`delete_page`, which needs the confirmation code the gateway checks).
 A client sees them as `confluence__<name>`. The generated table with each tool's title, risk, action and required group is in
 `docs/reference/tools.md` of the `mcp-docs` repository (link below). It is not repeated here.
 
-Reads cover search, pages, child pages, spaces, page versions, comments, labels and text attachments. Writes create and
+Reads cover search, pages, child pages, spaces, page versions (a stored version, the version history and a line diff of two versions), comments, labels and text attachments. `diff_page_versions` computes the diff in the server from the plain text of both versions, because Confluence Data Center has no diff endpoint; `list_page_versions` asks for the version numbers one by one (20 per call), because the public REST API has no version list. Writes create and
 update pages (`update_page` takes `expectedVersion` and refuses a stale one), add comments and labels. Search queries are
 built by the server from structured arguments; no tool accepts raw CQL.
 

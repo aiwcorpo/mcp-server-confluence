@@ -20,6 +20,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageText;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.WritesNotVerifiedException;
 import pl.aiwcorpo.mcp.confluence.core.port.out.ConfluenceResourcePort;
@@ -151,6 +152,45 @@ class ConfluenceServiceTest {
 
         assertThatThrownBy(() -> service.getPageVersion(record("10", "ENG", List.of()), 1))
                 .isInstanceOf(PageNotFoundException.class);
+    }
+
+    @Test
+    void theHistoryIsReadInWindowsOfTwentyNumbersFromTheNewestAndSkipsWhatIsNotShown() {
+        List<String> asked = new ArrayList<>();
+        calls.put("findPageVersionInfo", args -> {
+            asked.add(args[1] + ":" + args[2]);
+            return (int) args[1] == 29 ? Optional.<PageVersion>empty()
+                    : Optional.of(new PageVersion((int) args[1], "Author", "2026-10-20T10:00:00.000+02:00", ""));
+        });
+        PageRecord current = new PageRecord("10", "ENG", "Page 10", 30, null, List.of(), List.of());
+
+        Slice<PageVersion> first = service.listPageVersions(current, 0);
+
+        assertThat(first.items()).hasSize(19).extracting(PageVersion::number).first().isEqualTo(30);
+        assertThat(first.nextStart()).isEqualTo(10);
+        assertThat(asked).first().isEqualTo("30:true");
+        assertThat(asked).filteredOn(call -> call.endsWith(":true")).hasSize(1);
+        assertThat(service.listPageVersions(current, 10).nextStart()).isNull();
+    }
+
+    @Test
+    void aDiffOfBodiesLongerThanTheLimitIsReportedNotComputed() {
+        String longText = String.join("\n", java.util.Collections.nCopies(ConfluenceService.DIFF_MAX_LINES + 1, "x"));
+        calls.put("findPageVersion", args -> Optional.of(new Page("10", "ENG", "Page 10", (int) args[1], null, List.of(),
+                new PageText((int) args[1] == 1 ? longText : "short", List.of(), true))));
+        PageRecord current = new PageRecord("10", "ENG", "Page 10", 5, null, List.of(), List.of());
+
+        var diff = service.diffPageVersions(current, 1, 2).orElseThrow();
+
+        assertThat(diff.diff()).isEmpty();
+        assertThat(diff.omitted()).containsExactly("body_truncated", "diff_too_large");
+    }
+
+    @Test
+    void aVersionAfterTheJudgedOneDoesNotExist() {
+        PageRecord current = new PageRecord("10", "ENG", "Page 10", 5, null, List.of(), List.of());
+
+        assertThat(service.diffPageVersions(current, 6, 1)).isEmpty();
     }
 
     private static Comment comment(String id, String page) {

@@ -13,6 +13,7 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
 import pl.aiwcorpo.mcp.confluence.core.port.in.ConfluenceUseCase;
@@ -21,12 +22,14 @@ import pl.aiwcorpo.mcp.confluence.tools.ToolResults.AddedLabel;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.AttachmentContent;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.AttachmentItem;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.CommentItem;
+import pl.aiwcorpo.mcp.confluence.tools.ToolResults.DiffResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.LabelsResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.PageResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.SpaceHit;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.SpaceResult;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.TrashedPage;
+import pl.aiwcorpo.mcp.confluence.tools.ToolResults.VersionItem;
 import pl.aiwcorpo.mcp.confluence.tools.ToolResults.WrittenPage;
 import pl.aiwcorpo.mcp.platform.error.InvalidToolArgumentException;
 import pl.aiwcorpo.mcp.platform.guard.RiskLevel;
@@ -250,6 +253,44 @@ public class ConfluencePageTools {
             @ToolParam(description = "Version number, 1 or more")
             @ArgumentLimits(minimum = 1, maximum = 1_000_000) int version) {
         return useCase.getPageVersion(judgedPage(pageId), version).map(PageResult::of)
+                .orElseThrow(PageNotFoundException::new);
+    }
+
+    @Tool(name = "list_page_versions", description = "Lists the stored versions of a Confluence page, newest first, "
+            + "up to 20 per call: version number, author display name, time and the version comment, and nextCursor "
+            + "when older versions follow. A version the instance has pruned is left out.")
+    @ToolRisk(RiskLevel.READ_ONLY)
+    @ToolTitle("List page versions")
+    public PagedResult<VersionItem> listPageVersions(
+            @ToolParam(description = "Page id, a positive decimal number")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
+            @ToolParam(required = false, description = "nextCursor of the previous call with the same arguments")
+            @ArgumentLimits(maxLength = CursorCodec.MAX_CURSOR_LENGTH, pattern = CursorCodec.ARGUMENT_PATTERN) @Nullable String cursor) {
+        PageRecord page = judgedPage(pageId);
+        String fingerprint = CursorCodec.fingerprint(page.id());
+        int start = startOf(cursor, "list_page_versions", fingerprint);
+        Slice<PageVersion> versions = useCase.listPageVersions(page, start);
+        return PagedResult.of(versions.items().stream().map(VersionItem::of).toList(),
+                nextCursor(versions.nextStart(), "list_page_versions", fingerprint));
+    }
+
+    @Tool(name = "diff_page_versions", description = "Returns a unified line diff between the plain-text bodies of "
+            + "two versions of a Confluence page, read the way get_page reads a body (macros are not expanded), with "
+            + "3 lines of context. The diff is cut at 50000 characters (diff.truncated). Bodies of more than 2000 "
+            + "lines are not compared: omitted then holds diff_too_large. A version that does not exist is "
+            + "not_found_or_denied.")
+    @ToolRisk(RiskLevel.READ_ONLY)
+    @ToolTitle("Diff page versions")
+    public DiffResult diffPageVersions(
+            @ToolParam(description = "Page id, a positive decimal number")
+            @ArgumentLimits(minLength = 1, maxLength = PAGE_ID_MAX, resourceType = ConfluenceResourceModel.PAGE_TYPE)
+            @ResourceRef(type = ConfluenceResourceModel.PAGE_TYPE) String pageId,
+            @ToolParam(description = "Older version number, 1 or more")
+            @ArgumentLimits(minimum = 1, maximum = 1_000_000) int fromVersion,
+            @ToolParam(description = "Newer version number, 1 or more")
+            @ArgumentLimits(minimum = 1, maximum = 1_000_000) int toVersion) {
+        return useCase.diffPageVersions(judgedPage(pageId), fromVersion, toVersion).map(DiffResult::of)
                 .orElseThrow(PageNotFoundException::new);
     }
 

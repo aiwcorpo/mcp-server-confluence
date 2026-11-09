@@ -12,8 +12,10 @@ import pl.aiwcorpo.mcp.confluence.core.domain.PageEdit;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageNotFoundException;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageRecord;
 import pl.aiwcorpo.mcp.confluence.core.domain.PageSummary;
+import pl.aiwcorpo.mcp.confluence.core.domain.PageVersion;
 import pl.aiwcorpo.mcp.confluence.core.domain.Slice;
 import pl.aiwcorpo.mcp.confluence.core.domain.Space;
+import pl.aiwcorpo.mcp.confluence.core.domain.VersionDiff;
 import pl.aiwcorpo.mcp.confluence.core.domain.WritesNotVerifiedException;
 import pl.aiwcorpo.mcp.confluence.core.port.in.ConfluenceUseCase;
 import pl.aiwcorpo.mcp.confluence.core.port.out.BackendFeatures;
@@ -27,6 +29,15 @@ public class ConfluenceService implements ConfluenceUseCase {
 
     /** Comments are long, so their window is smaller: 10 comments of at most 4000 characters stay under 50 KB. */
     static final int COMMENT_WINDOW = 10;
+
+    /** Version numbers asked for in one window of the history; each one is a request to Confluence. */
+    static final int VERSION_WINDOW = 20;
+
+    /** Longest text, in lines, that is compared; longer bodies are reported instead of diffed. */
+    static final int DIFF_MAX_LINES = 2_000;
+
+    /** Size of the diff handed to the model, in characters. */
+    static final int DIFF_TEXT_MAX = 50_000;
 
     /** Text of an attachment handed to the model, in characters. */
     static final int ATTACHMENT_TEXT_MAX = 50_000;
@@ -93,6 +104,71 @@ public class ConfluenceService implements ConfluenceUseCase {
                     }
                     return page;
                 });
+    }
+
+    /**
+     * Confluence's public API has no version list, so the numbers below the current one are asked for one by one
+     * (at most {@link #VERSION_WINDOW} per call). A number Confluence does not show (a pruned version) is skipped.
+     */
+    @Override
+    public Slice<PageVersion> listPageVersions(PageRecord page, int start) {
+        int top = start <= 0 ? page.version() : Math.min(start, page.version());
+        int bottom = Math.max(1, top - VERSION_WINDOW + 1);
+        List<PageVersion> versions = new java.util.ArrayList<>();
+        for (int number = top; number >= bottom; number--) {
+            resource.findPageVersionInfo(page.id(), number, number == page.version()).ifPresent(versions::add);
+        }
+        return new Slice<>(versions, bottom > 1 ? bottom - 1 : null);
+    }
+
+    @Override
+    public Optional<VersionDiff> diffPageVersions(PageRecord judged, int fromVersion, int toVersion) {
+        Optional<Page> from = pageAtVersion(judged, fromVersion);
+        if (from.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<Page> to = pageAtVersion(judged, toVersion);
+        if (to.isEmpty()) {
+            return Optional.empty();
+        }
+        List<String> omitted = new java.util.ArrayList<>();
+        if (from.get().body().truncated() || to.get().body().truncated()) {
+            omitted.add("body_truncated");
+        }
+        List<String> before = TextDiff.lines(from.get().body().text());
+        List<String> after = TextDiff.lines(to.get().body().text());
+        if (before.size() > DIFF_MAX_LINES || after.size() > DIFF_MAX_LINES) {
+            omitted.add("diff_too_large");
+            return Optional.of(new VersionDiff(fromVersion, toVersion, "", false, false, omitted));
+        }
+        String diff;
+        try {
+            diff = TextDiff.unified(before, after, "version " + fromVersion, "version " + toVersion);
+        } catch (TextDiff.TooLargeException tooLarge) {
+            omitted.add("diff_too_large");
+            return Optional.of(new VersionDiff(fromVersion, toVersion, "", false, false, omitted));
+        }
+        boolean cut = diff.length() > DIFF_TEXT_MAX;
+        return Optional.of(new VersionDiff(fromVersion, toVersion, cut ? diff.substring(0, DIFF_TEXT_MAX) : diff,
+                diff.isEmpty(), cut, omitted));
+    }
+
+    /**
+     * The version judged as current is read as the page itself, because Confluence serves only earlier ones as
+     * historical; if the page was edited since, that number is historical by now and is read as such.
+     */
+    private Optional<Page> pageAtVersion(PageRecord judged, int version) {
+        if (version > judged.version()) {
+            return Optional.empty();
+        }
+        if (version == judged.version()) {
+            Optional<Page> current = resource.findPage(judged.id())
+                    .filter(page -> samePlace(judged, page.spaceKey(), page.ancestorIds()));
+            if (current.isPresent() && current.get().version() == version) {
+                return current;
+            }
+        }
+        return getPageVersion(judged, version);
     }
 
     @Override
