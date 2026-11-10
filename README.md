@@ -1,121 +1,87 @@
 # mcp-confluence
 
-MCP server for Confluence Data Center. It is one of the native servers of the MCP platform and runs only behind the
-platform gateway: it accepts mutual TLS traffic carrying the gateway's internal JWT and calls Confluence (REST API v1,
-`/rest/api/...`) with the user's personal access token (PAT), which the gateway attaches to every request. Without a valid
-JWT it answers 401; there is no anonymous mode.
+MCP server for Confluence Data Center. AI clients such as Claude Code reach it through the gateway of the aiwcorpo MCP
+platform; the server calls Confluence with each user's own personal access token.
 
-The server does not log users in, decide who may call which tool, or ask for confirmation of destructive actions. The
-gateway does that. The server provides the tools, the Confluence adapter, error mapping and the audit trail the starter writes.
+## Quick start
 
-Built on `mcp-platform-starter` 4.0.0 (Java 25, Spring Boot 4.1.0, Spring AI 2.0.0, `mcp-contracts` 7.0.0).
+```bash
+cd deploy
+# fill in MCP_GATEWAY_JWKS_URI, MCP_CONNECT_URL and MCP_CONFLUENCE_URL in mcp-confluence.env
+docker compose up -d
+docker compose logs mcp-confluence | grep event=tls_certificate
+```
 
-## Supported Confluence versions
-
-| Confluence Data Center | State | Effect |
-| --- | --- | --- |
-| 8.5 to 10.x (including 9.2 LTS and 10.2 LTS) | `supported` | all tools, writes on |
-| older than 8.5 | `degraded` | reads only; writes fail with `upstream_unavailable` |
-| 11.0 and newer | `degraded` | reads only until the version is tested |
-| version unreadable or no answer from the probe | `unavailable` | reads only; writes open only with `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true`, and only after the first probe result |
-
-Confluence Server and Confluence Cloud are not supported. The REST v1 paths the server uses are the same across 8.5 to 10.x,
-so there is one adapter and the version only decides whether writes are allowed. The tests use probe fixtures for 8.5, 9.2,
-10.2, 11.0 and 7.19 written from the vendor documentation, not recorded from a live instance.
-
-At startup and then every `aiwcorpo.mcp.platform.capability.interval` the probe reads the version without credentials from
-`GET /rest/api/server-information`, and from `GET /rest/applinks/1.0/manifest` when the first path sits behind a login. The
-state is in the log (`backend capability: probe=confluence state=...`), in the metric `mcp_backend_capability` and in the
-`backendCapability` detail of `/actuator/health`. The flag has no effect for a version the probe read and does not know
-(older than 8.5, 11.x and newer): those stay read-only.
+Then the platform operator adds `https://<this host>:8443/mcp` in the portal. Full steps: [deploy/README.md](deploy/README.md).
 
 ## Tools
 
-24 tools: 17 `READ_ONLY`, 6 `UPDATE` and 1 `DESTRUCTIVE` (`delete_page`, which needs the confirmation code the gateway checks).
-A client sees them as `confluence__<name>`. The generated table with each tool's title, risk, action and required group is in
-`docs/reference/tools.md` of the `mcp-docs` repository (link below). It is not repeated here.
+24 tools, shown to a client as `confluence__<name>`. Reading needs the group `mcp-confluence-read`, writing
+`mcp-confluence-write`. One tool deletes: `delete_page` moves a page to the trash and needs the group
+`mcp-confluence-destructive` and a confirmation code from the Authenticator, marked in the Delete column.
 
-Reads cover search, pages, child pages, the page tree of a space (`get_space_page_tree`: at most 200 pages and 10 levels, with `truncated` and `omitted` when it stops short), spaces, page restrictions (`get_page_restrictions`: who the view and the edit are restricted to on the page, by display name and group name, never an e-mail address; when Confluence does not report the lists of an operation the result says `restrictions_not_reported` instead of showing nobody), page versions (a stored version, the version history and a line diff of two versions), comments, labels and text attachments. `diff_page_versions` computes the diff in the server from the plain text of both versions (at most 4 diffs at a time, each limited to about a million line comparisons; a busy server answers `rate_limited`), because Confluence Data Center has no diff endpoint; `list_page_versions` asks for the version numbers one by one (20 per call), because the public REST API has no version list. Writes create and
-update pages (`update_page` takes `expectedVersion` and refuses a stale one), add comments and replies to comments, add labels and move a page under another parent of the same space (`move_page`). A move is judged on three places: the page, the new parent and the place the page leaves (its current parent page, or the space for a top-level page), each with the write scope, so a grant on a page tree does not let a page out of that tree. The documented REST API has no cross-space move and no endpoint to resolve an inline comment, so the server has no tool for either. `search_pages` builds its query in the server from structured arguments. `search_content` is the one tool that takes
-CQL from the caller: it needs a `space` the policy allows, the condition (at most 500 characters) is scanned and wrapped in
-parentheses, and the server ANDs `space in (...)` and `type = page` outside it, so a condition cannot reach another space or other
-content. Every hit is then looked up by id and kept only if Confluence puts the page in that space now and the policy allows it. It
-uses `/rest/api/search` (not `content/search`) because only that endpoint returns the excerpt.
+| Area | Read | Write | Delete |
+| --- | --- | --- | --- |
+| Search | `search_pages`, `search_content` | | |
+| Pages | `get_page`, `get_page_by_title`, `list_pages`, `list_child_pages`, `get_space_page_tree`, `get_page_restrictions` | `create_page`, `update_page`, `move_page` | `delete_page` |
+| Versions | `list_page_versions`, `get_page_version`, `diff_page_versions` | | |
+| Comments | `list_comments` | `add_comment`, `reply_to_comment` | |
+| Labels | `list_labels` | `add_label` | |
+| Attachments | `list_attachments`, `read_attachment` | | |
+| Spaces | `list_spaces`, `get_space` | | |
 
-## Build and test
+`search_pages` builds its query from structured arguments (words, title, label) in one space. `search_content` takes a CQL
+condition of up to 500 characters; it needs a space the policy allows, and the server adds the space and `type = page` around
+your condition, so it cannot reach other spaces. `update_page` takes `expectedVersion` and refuses a stale one. `move_page` works
+inside one space and needs write rights on the page, the new parent and the place the page leaves. `read_attachment` returns text
+files only.
 
-JDK 25 is required (`JAVA_HOME` must point to it; an older `java` in `PATH` fails with `UnsupportedClassVersionError`).
+Users connect with a personal access token (credential type `user-secret`). A token has the rights of its account: View on the
+spaces it reads, Add and Edit pages for `create_page`, `update_page`, `move_page` and `add_label`, Add comments for comments,
+Delete pages for `delete_page`. Writes are allowed only inside spaces and page trees that the platform operator maps to the
+user's group (scope mapping). Spaces labelled `restricted` are closed to everyone.
 
-```bash
-export JAVA_HOME=/path/to/jdk-25
-./mvnw verify      # build and tests, jar in mcp-app/target/mcp-confluence.jar
-```
+## Supported Confluence versions
 
-The tests need neither Docker nor a Confluence. `TestGateway` from `mcp-platform-test` publishes a JWKS made from the contract
-test keys and signs internal JWTs, and `StubBackend` answers like Confluence DC on the endpoints the server uses. `./mvnw verify` also leaves the manifest in `mcp-app/target/mcp-manifest.json`; it is the document the running server serves at `/.well-known/mcp-manifest` for the gateway to pull, and an administrator approves every new or changed tool there. `docker build -t mcp-confluence:dev .` builds the container image (`Dockerfile`, `eclipse-temurin:25-jre`, port 8443) from that jar and needs a Docker daemon. The GitHub, GitLab and Jenkins files run `./mvnw -B verify`. A `v*` tag runs `.github/workflows/release.yml`, which builds
-`ghcr.io/aiwcorpo/mcp-server-confluence` and attaches the manifest and an SBOM to the GitHub release.
+Confluence Data Center 8.5 to 10.x (including the 9.2 and 10.2 LTS), REST API v1. Confluence Server and Cloud are not supported.
 
-## Policies
+The server reads the version at start and then at a fixed interval:
 
-The Cedar policies of Confluence live here, in `mcp-app/src/main/resources/mcp/policies/`, and are part of the jar and of the manifest:
+| State | When | Effect |
+| --- | --- | --- |
+| `supported` | Data Center 8.5 to 10.x | all tools |
+| `degraded` | older than 8.5, or 11.0 and newer | reads only, writes fail with `upstream_unavailable` |
+| `unavailable` | the version is unreadable | reads only; writes open with `MCP_CONFLUENCE_WRITES_ON_UNKNOWN_VERSION=true` |
 
-| File | Content |
-| --- | --- |
-| `schema.cedarschema` | namespace `Confluence`: `Confluence::Space` (with the classification attribute `labels`) and `Confluence::Page` (parent: its space, plus the ancestor page ids), actions `read`, `update`, `delete`, `admin` |
-| `resource-types.json` | the declarations of both types: `idPattern` (space key, page id), `scopePattern`, `earlyScopeCheck` for spaces, the classification and the parent |
-| `read.cedar` | reading needs `mcp-confluence-read`; it follows the user's own rights in Confluence |
-| `update.cedar` | changing a page, or creating one directly in a space (an update of the space), needs `mcp-confluence-write` and a scope; deleting a page needs `mcp-confluence-destructive` and a scope; a space is never deleted |
-
-What is not written here is generated by the platform: the group a tool needs, the closed `restricted` spaces (from the declared
-`labels`, for the space and for its pages) and the limits of the service account. Who holds which scope is administrator data in the
-gateway (the scope mapping), not part of this repository.
-
-Scopes decide the changes. A grant on `Confluence::Space/<key>` covers the space and all of its pages; a grant on
-`Confluence::Page/<id>` covers that page and the tree below it. The resolvers derive this from what Confluence reports: a page carries
-the scope of its space, of every ancestor page (`ancestorIds`) and of itself, so a page moved out of a granted tree is judged by where
-it is now, and a page grant never covers the space itself. `ConfluencePolicyDecisionsTest` states the decisions with
-`PolicyDecisions`; a change to any file here changes `policiesHash` in the manifest, and an administrator has to approve it before the
-server decides anything.
-
-## Running against a real Confluence
-
-`.run/` has two IntelliJ configurations. Start `LocalGateway` (the gateway of `mcp-platform-test` on `http://127.0.0.1:18500/mcp`,
-serving the JWKS on port 18445 and pushing the policy data to the server with the policies of this working tree and the mapping in
-`.run/scope-mapping.json`), then `McpConfluence (dev, behind LocalGateway)` with `MCP_CONFLUENCE_URL` set to your Confluence. Connect an
-MCP client to the gateway with `Authorization: Bearer <your PAT>`. Edit `.run/scope-mapping.json` and the `--groups` of the
-`LocalGateway` configuration for your space keys and page trees, and restart `LocalGateway` after a change to the policies (it
-approves the hash of the files it read). The configurations need the `4.0.0` artifacts in `~/.m2` (`./mvnw verify` of the starter).
+The server has not been tested against a live Confluence. The tests use responses written from the vendor documentation. Run
+read-only calls on your instance first.
 
 ## Configuration
 
-The base configuration (`mcp-app/src/main/resources/application.yml`) is the production one. Outside the `dev` profile the
-server does not start without these:
+Required, in `deploy/mcp-confluence.env`:
 
-| Variable | Meaning |
+| Variable | Description |
 | --- | --- |
-| `MCP_GATEWAY_JWKS_URI` | public key set of the gateway's internal JWT: `https://<domain of the platform>/.well-known/mcp-jwks.json` |
-| `MCP_CONNECT_URL` | portal page where a user connects an account; returned in `credential_required` |
-| `MCP_CONFLUENCE_URL` | base address of Confluence without `/rest/api`, with the context path if there is one; `https` only |
-| `MCP_ACCEPTED_CREDENTIAL_TYPES` | accepted credential types for the manifest (`user-secret`) |
+| `MCP_GATEWAY_JWKS_URI` | key set of the gateway: `https://<platform>/.well-known/mcp-jwks.json` |
+| `MCP_CONNECT_URL` | portal page where a user connects Confluence: `https://<platform>/connections?system={system}` |
+| `MCP_CONFLUENCE_URL` | address of Confluence without `/rest/api`, with the context path if there is one, `https` only |
 
-Also used: `MCP_CONFLUENCE_SSL_BUNDLE` (SSL bundle for a Confluence with an internal CA), `MCP_PAGING_CURSOR_KEY` (Base64, at least 32
-bytes; optional for one instance, required and the same on every instance for several), `MCP_TLS_CERT` and `MCP_TLS_KEY`, or `MCP_TLS_KEYSTORE` with `MCP_TLS_STORE_PASSWORD` (your own certificate; without them the server generates a
-self-signed one into `MCP_STATE_DIR`, and `MCP_PLAIN_HTTP=true` means no TLS inside the platform network), `MCP_REDIS_HOST` and the other `MCP_REDIS_*`
-(one-time `jti` in Redis instead of memory: for several instances behind a balancer, which also need the same `MCP_PAGING_CURSOR_KEY`) and `MCP_PORT`/`MCP_BIND`
-(default `8443`, `0.0.0.0`). `MCP_CONFLUENCE_ALLOW_PLAIN_HTTP=true` allows `http` and exists only for the mocks of the development
-stack. The full list with defaults is in `docs/reference/env-servers.md` of `mcp-docs`.
+`MCP_ACCEPTED_CREDENTIAL_TYPES` is preset to `user-secret`. Optional settings (own certificate, Redis for several instances,
+trust store for a Confluence with a company CA) are commented in the same file.
 
-A PAT has no scopes and inherits every right of the account. The account needs View on the spaces it reads, Add/Edit pages for
-`create_page`, `update_page`, `move_page` and `add_label`, Add comments for `add_comment` and `reply_to_comment` and Delete pages for `delete_page`. Use one account per
-person. The platform policy can only narrow what the account is allowed to do.
+## Build
 
-## Documentation
+```bash
+export JAVA_HOME=<path to JDK 25>
+./mvnw verify
+```
 
-Installation, operation, upgrades, the checks to run on a first real instance and the tool reference live in
-[mcp-docs](https://github.com/aiwcorpo/mcp-docs):
+The jar is `mcp-app/target/mcp-confluence.jar`; `docker build -t mcp-confluence:dev .` builds the image. Tests need neither
+Docker nor Confluence. Working on the code: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- `docs/reference/tools.md`: tools with risk and required group
-- `docs/reference/env-servers.md`: environment variables of every server
-- `docs/operator/real-systems.md`: supported product versions, read-only checks on a real instance
+## More
 
-See also `CONTRIBUTING.md`, `SECURITY.md` and `CHANGELOG.md`. Licensed under Apache-2.0.
+- [deploy/README.md](deploy/README.md): installation, troubleshooting, upgrade from 1.x
+- [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md)
+
+Apache License 2.0.
