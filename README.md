@@ -1,5 +1,7 @@
 # mcp-confluence
 
+Part of [MCP Platform](https://github.com/aiwcorpo/mcp-platform), a self-hosted MCP gateway for companies. Documentation: [mcp.aiwcorpo.pl](https://mcp.aiwcorpo.pl/).
+
 MCP server for Confluence Data Center. AI clients such as Claude Code reach it through the gateway of the aiwcorpo MCP
 platform; the server calls Confluence with each user's own personal access token.
 
