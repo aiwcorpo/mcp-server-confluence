@@ -84,6 +84,7 @@ Docker nor Confluence. Working on the code: [CONTRIBUTING.md](CONTRIBUTING.md).
 ## More
 
 - [deploy/README.md](deploy/README.md): installation, troubleshooting, upgrade from 1.x
+- [CONTRIBUTING.md](CONTRIBUTING.md#release): repository settings needed before the first release tag
 - [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md)
 
 Apache License 2.0.
