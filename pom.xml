@@ -52,6 +52,13 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mcp-platform.version>4.0.0</mcp-platform.version>
         <jsoup.version>1.22.1</jsoup.version>
+        <!-- Security fixes newer than the parent above; drop these once the starter moves to a Boot release that manages them. -->
+        <tomcat.version>11.0.27</tomcat.version>
+        <jackson-bom.version>3.1.7</jackson-bom.version>
+        <spring-framework.version>7.0.10</spring-framework.version>
+        <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+        <netty.version>4.2.19.Final</netty.version>
+        <log4j2.version>2.25.5</log4j2.version>
     </properties>
 
     <dependencyManagement>
@@ -69,6 +76,12 @@
                 <groupId>org.jsoup</groupId>
                 <artifactId>jsoup</artifactId>
                 <version>${jsoup.version}</version>
+            </dependency>
+            <!-- Comes in at runtime through cedar-java; not managed by the Boot parent. Security fix newer than 33.5.0-jre. -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>33.7.2-jre</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
