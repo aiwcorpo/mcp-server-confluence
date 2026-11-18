@@ -16,7 +16,9 @@ query to Confluence, and any path by which the backend credential reaches a log,
 In scope: the code of this repository. Out of scope: the platform library (`mcp-starter-lib`), the gateway, the credential
 broker and the policies, which are separate repositories with their own policies; Confluence itself.
 
-The invariants of the server and the tests that hold them are in `docs/security/SECURITY.md`.
+What the server must keep (policy decisions, the ids of child objects, the scope of writes) is described in the "Policies" and
+"Tool behavior" sections of [CONTRIBUTING.md](CONTRIBUTING.md); what the platform guarantees is on
+https://mcp.aiwcorpo.pl/2.0/admin/security/.
 
 ## Supported versions
 
