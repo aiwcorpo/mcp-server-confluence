@@ -73,6 +73,17 @@ uses. The image (`Dockerfile`, `eclipse-temurin:25-jre`, port 8443) needs a Dock
 runs `.github/workflows/release.yml`, which builds `ghcr.io/aiwcorpo/mcp-server-confluence` and attaches the manifest and an SBOM
 to the GitHub release. `JAVA_HOME` must point to JDK 25, or the build fails with `UnsupportedClassVersionError`.
 
+## Release
+
+A pushed tag `v<version>` runs `.github/workflows/release.yml`, which pushes `ghcr.io/aiwcorpo/mcp-server-confluence:<version>`
+and creates the GitHub Release from the tagged commit. The workflow cannot check who pushed the tag or whether the commit was
+reviewed, so the approval is in the repository settings. Before the first tag:
+
+1. Settings > Environments: create `release` with required reviewers, "Prevent self-review" on, and deployment branches and tags
+   limited to tags `v*`.
+2. Settings > Rules > Rulesets: a tag ruleset for `v*` that restricts creation, update and deletion to the release maintainers.
+3. Package settings of `mcp-server-confluence` on ghcr.io: write access only for this repository and the release maintainers.
+
 ## Running against a real Confluence
 
 `.run/` has two IntelliJ configurations. Start `LocalGateway` (the gateway of `mcp-platform-test` on

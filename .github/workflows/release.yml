@@ -2,8 +2,10 @@
 # manifest and the SBOM (CycloneDX) to the GitHub Release. Runs only on a v* tag; nothing is pushed from branches. The
 # platform artifacts come from Maven Central, so no job reads a package registry and none needs packages: read.
 #
-# Setup, once: environment "release" with required reviewers and a deployment rule for tags v*. No personal access token is
-# stored.
+# Setup, once: environment "release" with required reviewers, self-review prevented and a deployment rule for tags v*; a tag
+# ruleset that limits creating, updating and deleting v* tags to the release maintainers; write access to the package only
+# for this repository. A step in this file cannot bind the tag author, so these settings are the release approval;
+# CONTRIBUTING.md ("Release") lists them. No personal access token is stored.
 #
 # Five jobs, each with the rights of its own work only: verify runs the tests with contents: read and hands over the jar and
 # the manifest; image builds the image with contents: read and hands it over as a tarball (docker save); publish has
