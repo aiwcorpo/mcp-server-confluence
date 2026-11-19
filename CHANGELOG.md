@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.1 - 2026-11-19
+
+Maintenance release: built on `mcp-platform-starter` 4.1.0 and `mcp-contracts` 7.2.0, with newer Tomcat, Jackson, Spring, Netty and Log4j.
+No tool, policy or manifest declaration changed, so the gateway does not ask for a new approval because of this release.
+
+- Dependencies: `mcp-platform-starter` 4.0.0 -> 4.1.0 (brings `mcp-contracts` 7.2.0; the Spring Boot parent stays 4.1.0). Tomcat 11.0.27,
+  Jackson 3.1.7 and 2.21.7, Spring Framework 7.0.10, Netty 4.2.19.Final, Log4j 2.25.5 and Guava are raised above what the Boot parent manages.
+- The release workflow refuses to push a version for which a GitHub Release or an image already exists, and its publish job can read releases.
+- The GitLab merge-request pipelines use a read-only Maven cache of their own.
+- CONTRIBUTING names the settings the release workflow relies on: the `release` environment, the `v*` tag ruleset and package access.
+- Added `AGENTS.md`; the README links to MCP Platform and its documentation.
+
 ## 2.0.0
 
 Major release: the policies of the server live in this repository. Built on `mcp-platform-starter` 4.0.0 and `mcp-contracts` 7.0.0.

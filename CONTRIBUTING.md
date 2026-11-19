@@ -91,7 +91,7 @@ reviewed, so the approval is in the repository settings. Before the first tag:
 the mapping in `.run/scope-mapping.json`), then `McpConfluence (dev, behind LocalGateway)` with `MCP_CONFLUENCE_URL` set to your
 Confluence. Connect an MCP client to the gateway with `Authorization: Bearer <your PAT>`. Edit `.run/scope-mapping.json` and the
 `--groups` of `LocalGateway` for your space keys and page trees, and restart `LocalGateway` after a change to the policies. The
-configurations need the `4.0.0` starter artifacts in `~/.m2`. `MCP_CONFLUENCE_ALLOW_PLAIN_HTTP=true` allows `http` and exists for
+configurations need the `4.1.0` starter artifacts in `~/.m2`. `MCP_CONFLUENCE_ALLOW_PLAIN_HTTP=true` allows `http` and exists for
 the mocks of the development stack.
 
 ## Commits
