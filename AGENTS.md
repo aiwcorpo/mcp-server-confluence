@@ -4,7 +4,7 @@ mcp-confluence is the MCP server for Confluence Data Center in [MCP Platform](ht
 Only the gateway calls it (internal JWT, policy data pushed to `POST /.well-known/mcp-policy-data`); it calls Confluence
 REST API v1 with the caller's own personal access token. Its interfaces follow `mcp-contracts`
 (`server-manifest.schema.json`, `internal-jwt.schema.json`, `tool-error.schema.json`, `openapi/mcp-server.v1.yaml`) through
-`mcp-platform-starter` 4.0.0 from `mcp-starter-lib`.
+`mcp-platform-starter` 4.1.0 from `mcp-starter-lib`.
 
 ## Commands
 

@@ -12,7 +12,7 @@ name: mcp-confluence
 
 services:
   mcp-confluence:
-    image: ${MCP_REGISTRY:-ghcr.io/aiwcorpo}/mcp-server-confluence:${MCP_CONFLUENCE_VERSION:-2.0.0}
+    image: ${MCP_REGISTRY:-ghcr.io/aiwcorpo}/mcp-server-confluence:${MCP_CONFLUENCE_VERSION:-2.0.1}
     build:
       context: ..
       dockerfile: Dockerfile
